@@ -192,11 +192,41 @@ main {
   margin-top: 0.75rem;
 }
 
+.edge-section {
+  margin-bottom: 1.25rem;
+}
+
+.edge-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.edge-section-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+}
+
+.edge-meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.edge-meta-sep {
+  margin: 0 0.5rem;
+  opacity: 0.5;
+}
+
 .edge-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-  margin: 1rem 0;
+  margin: 0.5rem 0;
 }
 
 .edge-item {
@@ -249,4 +279,105 @@ main {
 
 .link-card a:hover {
   text-decoration: underline;
+}
+
+.paper-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin: 1rem 0;
+}
+
+.paper-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.paper-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.paper-stat-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  font-size: 1.25rem;
+}
+
+.paper-stat-value.positive { color: var(--up); }
+.paper-stat-value.negative { color: var(--down); }
+
+.paper-clear-btn {
+  margin: 0.5rem 0 1rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  font-family: inherit;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.paper-clear-btn:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.paper-by-strategy {
+  margin: 1rem 0;
+}
+
+.paper-strategy-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.5rem 0;
+  font-size: 0.85rem;
+  font-family: 'JetBrains Mono', monospace;
+  border-bottom: 1px solid var(--border);
+}
+
+.paper-strategy-row:last-child {
+  border-bottom: none;
+}
+
+.paper-strategy-row span:first-child {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.paper-strategy-row .positive { color: var(--up); font-weight: 600; }
+.paper-strategy-row .negative { color: var(--down); font-weight: 600; }
+
+.paper-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 1rem 0 0.5rem;
+}
+
+#paper-positions-list, #paper-trades-content {
+  font-size: 0.8rem;
+  font-family: 'JetBrains Mono', monospace;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.paper-trade-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.35rem 0;
+  font-size: 0.85rem;
+  font-family: 'JetBrains Mono', monospace;
+  border-bottom: 1px solid var(--border);
+}
+
+.paper-trade-row.win { color: var(--up); }
+.paper-trade-row.loss { color: var(--down); }
+
+.paper-trade-row span:last-child {
+  font-weight: 600;
 }

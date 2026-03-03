@@ -18,6 +18,20 @@ let priceAtWindowStartBinance = 0;
 let priceAtWindowStartChainlink = 0;
 let currentWindowSlug = '';
 
+function isFallbackPolymarketUpdate(e: {
+  upPrice: number;
+  downPrice: number;
+  bestBidUp: number;
+  bestAskUp: number;
+}): boolean {
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.01;
+  return near(e.upPrice, 0.5) && near(e.downPrice, 0.5) && near(e.bestBidUp, 0.5) && near(e.bestAskUp, 0.5);
+}
+
+function isNearHalf(v: number): boolean {
+  return Math.abs(v - 0.5) < 0.02;
+}
+
 function initListeners() {
   feedEvents.on('binance_trade', (e) => {
     state.binance.lastPrice = e.price;
@@ -36,6 +50,19 @@ function initListeners() {
   });
 
   feedEvents.on('polymarket_update', (e) => {
+    // Hold last valid odds during reconnect/fallback updates so UI doesn't flash 50/50.
+    if (isFallbackPolymarketUpdate(e) && state.polymarket && !isFallbackPolymarketUpdate(state.polymarket)) {
+      return;
+    }
+    // Also ignore transient near-50 updates if the last valid value was clearly not near 50.
+    if (
+      state.polymarket &&
+      isNearHalf(e.upPrice) &&
+      !isNearHalf(state.polymarket.upPrice)
+    ) {
+      return;
+    }
+
     if (e.slug !== currentWindowSlug) {
       currentWindowSlug = e.slug;
       priceAtWindowStartBinance = state.binance.lastPrice > 0 ? state.binance.lastPrice : 0;
@@ -47,6 +74,8 @@ function initListeners() {
       windowEnd: e.windowEnd,
       upPrice: e.upPrice,
       downPrice: e.downPrice,
+      bestBidUp: e.bestBidUp,
+      bestAskUp: e.bestAskUp,
       lastUpdate: e.timestamp,
     };
   });
@@ -70,9 +99,15 @@ export function getEdgeAnalysis(): EdgeAnalysis | null {
   const chainlinkPrice = state.polymarketPrice?.price ?? 0;
   const impliedUpChainlink = impliedUpFromPrice(chainlinkPrice, priceAtWindowStartChainlink);
   const polymarketUp = pm.upPrice;
+  const polymarketAskUp = pm.bestAskUp > 0 && pm.bestAskUp < 1 ? pm.bestAskUp : polymarketUp;
 
-  // Use Chainlink for edge - Polymarket resolves on Chainlink
-  const edge = impliedUpChainlink - polymarketUp;
+  // Binance as leading indicator: Binance moves first, Chainlink follows. Edge = Binance implied − Polymarket ask.
+  const edge = impliedUpBinance - polymarketAskUp;
+  const edgeFromChainlink = impliedUpChainlink - polymarketAskUp;
+  const polymarketSpreadBps =
+    pm.bestAskUp >= 0 && pm.bestBidUp >= 0
+      ? (pm.bestAskUp - pm.bestBidUp) * 10000
+      : undefined;
 
   const spread = state.binance.lastPrice > 0 && chainlinkPrice > 0
     ? state.binance.lastPrice - chainlinkPrice
@@ -85,7 +120,10 @@ export function getEdgeAnalysis(): EdgeAnalysis | null {
     impliedUpFromBinance: impliedUpBinance,
     impliedUpFromChainlink: impliedUpChainlink,
     polymarketUp,
+    polymarketAskUp,
     edge,
+    edgeFromChainlink,
+    polymarketSpreadBps,
     timeToResolution,
     priceAtWindowStartBinance: priceAtWindowStartBinance || undefined,
     priceAtWindowStartChainlink: priceAtWindowStartChainlink || undefined,

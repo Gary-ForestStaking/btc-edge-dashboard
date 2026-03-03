@@ -72,7 +72,13 @@ function parseWindowTimes(event: PolymarketEvent): { start: number; end: number 
   return { start: Math.floor(startDate), end: Math.floor(endDate) };
 }
 
-function emitUpdate(ctx: MarketContext, upPrice: number, downPrice: number, bestBid: number, bestAsk: number) {
+function emitUpdate(
+  ctx: MarketContext,
+  upPrice: number,
+  downPrice: number,
+  bestBidUp: number,
+  bestAskUp: number,
+) {
   feedEvents.emit('polymarket_update', {
     type: 'polymarket_update',
     slug: ctx.slug,
@@ -80,8 +86,8 @@ function emitUpdate(ctx: MarketContext, upPrice: number, downPrice: number, best
     windowEnd: ctx.windowEnd,
     upPrice,
     downPrice,
-    bestBid,
-    bestAsk,
+    bestBidUp,
+    bestAskUp,
     timestamp: Date.now(),
   });
 }
@@ -93,15 +99,15 @@ export function startPolymarketFeed(): () => void {
   let ctx: MarketContext | null = null;
   let upPrice = 0.5;
   let downPrice = 0.5;
-  let bestBid = 0.5;
-  let bestAsk = 0.5;
+  let bestBidUp = 0.5;
+  let bestAskUp = 0.5;
 
   const connectWs = (upTokenId: string, downTokenId: string) => {
     if (ws) ws.close();
     ws = new WebSocket(PM_WS);
 
     ws.on('open', () => {
-      ws.send(JSON.stringify({
+      ws!.send(JSON.stringify({
         assets_ids: [upTokenId, downTokenId],
         type: 'market',
         custom_feature_enabled: true,
@@ -118,36 +124,36 @@ export function startPolymarketFeed(): () => void {
           const bid = parseFloat(msg.best_bid ?? '0');
           const ask = parseFloat(msg.best_ask ?? '1');
           if (msg.asset_id === ctx.upTokenId) {
-            bestBid = bid;
-            bestAsk = ask;
+            bestBidUp = bid;
+            bestAskUp = ask;
             upPrice = (bid + ask) / 2;
             downPrice = 1 - upPrice;
-            emitUpdate(ctx, upPrice, downPrice, bestBid, bestAsk);
+            emitUpdate(ctx, upPrice, downPrice, bestBidUp, bestAskUp);
           } else if (msg.asset_id === ctx.downTokenId) {
             const downMid = (bid + ask) / 2;
             upPrice = 1 - downMid;
             downPrice = downMid;
-            bestBid = upPrice;
-            bestAsk = upPrice;
-            emitUpdate(ctx, upPrice, downPrice, bestBid, bestAsk);
+            bestBidUp = 1 - ask;
+            bestAskUp = 1 - bid;
+            emitUpdate(ctx, upPrice, downPrice, bestBidUp, bestAskUp);
           }
         } else if (msg.event_type === 'price_change') {
           for (const pc of msg.price_changes ?? []) {
             const bid = parseFloat(String(pc.best_bid ?? '0'));
             const ask = parseFloat(String(pc.best_ask ?? '1'));
             if (pc.asset_id === ctx.upTokenId && (bid > 0 || ask > 0)) {
-              bestBid = bid;
-              bestAsk = ask;
+              bestBidUp = bid;
+              bestAskUp = ask;
               upPrice = (bid + ask) / 2;
               downPrice = 1 - upPrice;
-              emitUpdate(ctx, upPrice, downPrice, bestBid, bestAsk);
+              emitUpdate(ctx, upPrice, downPrice, bestBidUp, bestAskUp);
             } else if (pc.asset_id === ctx.downTokenId && (bid > 0 || ask > 0)) {
               const downMid = (bid + ask) / 2;
               upPrice = 1 - downMid;
               downPrice = downMid;
-              bestBid = upPrice;
-              bestAsk = upPrice;
-              emitUpdate(ctx, upPrice, downPrice, bestBid, bestAsk);
+              bestBidUp = 1 - ask;
+              bestAskUp = 1 - bid;
+              emitUpdate(ctx, upPrice, downPrice, bestBidUp, bestAskUp);
             }
           }
         } else if (msg.event_type === 'book') {
@@ -156,18 +162,18 @@ export function startPolymarketFeed(): () => void {
           const topBid = bids.length ? parseFloat(bids[0]?.price ?? '0') : 0;
           const topAsk = asks.length ? parseFloat(asks[0]?.price ?? '1') : 1;
           if (msg.asset_id === ctx.upTokenId) {
-            bestBid = topBid;
-            bestAsk = topAsk;
+            bestBidUp = topBid;
+            bestAskUp = topAsk;
             upPrice = (topBid + topAsk) / 2;
             downPrice = 1 - upPrice;
-            emitUpdate(ctx, upPrice, downPrice, bestBid, bestAsk);
+            emitUpdate(ctx, upPrice, downPrice, bestBidUp, bestAskUp);
           } else if (msg.asset_id === ctx.downTokenId) {
             const downMid = (topBid + topAsk) / 2;
             upPrice = 1 - downMid;
             downPrice = downMid;
-            bestBid = upPrice;
-            bestAsk = upPrice;
-            emitUpdate(ctx, upPrice, downPrice, bestBid, bestAsk);
+            bestBidUp = 1 - topAsk;
+            bestAskUp = 1 - topBid;
+            emitUpdate(ctx, upPrice, downPrice, bestBidUp, bestAskUp);
           }
         }
       } catch (e) {
@@ -210,9 +216,9 @@ export function startPolymarketFeed(): () => void {
         const [up, down] = parseOutcomePrices(m.outcomePrices);
         upPrice = up;
         downPrice = down;
-        bestBid = m.bestBid ?? upPrice;
-        bestAsk = m.bestAsk ?? downPrice;
-        emitUpdate(ctx, upPrice, downPrice, bestBid, bestAsk);
+        bestBidUp = m.bestBid ?? upPrice;
+        bestAskUp = m.bestAsk ?? upPrice;
+        emitUpdate(ctx, upPrice, downPrice, bestBidUp, bestAskUp);
         connectWs(upTokenId, downTokenId);
       }
       break;

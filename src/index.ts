@@ -3,6 +3,7 @@ import { startBinanceFeed } from './feeds/binance-feed.js';
 import { startPolymarketFeed } from './feeds/polymarket-feed.js';
 import { startPolymarketPriceFeed } from './feeds/polymarket-price-feed.js';
 import { state, getEdgeAnalysis } from './state.js';
+import { getPaperTradingState, clearPaperTrading } from './paper-trading/engine.js';
 
 const PORT = 3847;
 
@@ -16,12 +17,21 @@ const server = createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
 
-  if (req.url === '/api/state' && req.method === 'GET') {
+  const path = req.url?.split('?')[0] ?? '';
+  if ((path === '/api/paper/clear' || path === '/api/paper/clear/') && (req.method === 'POST' || req.method === 'GET')) {
+    clearPaperTrading();
+    res.end(JSON.stringify({ ok: true, cleared: true }));
+    return;
+  }
+
+  if (path === '/api/state' && req.method === 'GET') {
     const edge = getEdgeAnalysis();
+    const paper = getPaperTradingState();
     res.end(
       JSON.stringify({
         ...state,
         edgeAnalysis: edge,
+        paperTrading: paper,
         serverTime: Date.now(),
       })
     );

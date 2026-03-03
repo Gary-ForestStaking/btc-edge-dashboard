@@ -17,13 +17,29 @@ interface ApiState {
     impliedUpFromBinance: number;
     impliedUpFromChainlink: number;
     polymarketUp: number;
+    polymarketAskUp: number;
     edge: number;
+    edgeFromChainlink?: number;
+    polymarketSpreadBps?: number;
     timeToResolution: number;
     priceAtWindowStartBinance?: number;
     priceAtWindowStartChainlink?: number;
     binanceChainlinkSpread?: number;
     binanceChainlinkSpreadBps?: number;
   } | null;
+  paperTrading?: {
+    balance: number;
+    initialBalance: number;
+    lockedInPositions: number;
+    byStrategy?: Record<string, { name: string; pnl: number; wins: number; losses: number }>;
+    positions: Array<{ strategyId: string; side: string; entryPrice: number; size: number; timeToResolutionAtEntry: number }>;
+    trades: Array<{ strategyId: string; side: string; outcome: string; pnl: number }>;
+    totalTrades: number;
+    totalPnl: number;
+    wins: number;
+    losses: number;
+    winRate: number;
+  };
   serverTime: number;
 }
 
@@ -81,9 +97,18 @@ function render(state: ApiState | null) {
   const impliedUpBinance = document.getElementById('implied-up-binance')!;
   const impliedUpChainlink = document.getElementById('implied-up-chainlink')!;
   const polymarketUp = document.getElementById('polymarket-up')!;
+  const polymarketAskEl = document.getElementById('polymarket-ask');
   const edgeValue = document.getElementById('edge-value')!;
+  const edgeChainlinkEl = document.getElementById('edge-chainlink');
   const edgeWrap = document.getElementById('edge-value-wrap')!;
   const timeToRes = document.getElementById('time-to-res')!;
+  const paperBalance = document.getElementById('paper-balance')!;
+  const paperPnl = document.getElementById('paper-pnl')!;
+  const paperTrades = document.getElementById('paper-trades')!;
+  const paperWinrate = document.getElementById('paper-winrate')!;
+  const paperByStrategyList = document.getElementById('paper-by-strategy-list');
+  const paperPositionsList = document.getElementById('paper-positions-list')!;
+  const paperTradesContent = document.getElementById('paper-trades-content')!;
 
   if (!state) {
     statusEl.textContent = 'Disconnected';
@@ -129,19 +154,84 @@ function render(state: ApiState | null) {
       : '—';
     impliedUpBinance.textContent = formatPct(ea.impliedUpFromBinance);
     impliedUpChainlink.textContent = formatPct(ea.impliedUpFromChainlink);
-    polymarketUp.textContent = formatPct(ea.polymarketUp);
+    if (polymarketAskEl) {
+      polymarketAskEl.textContent = formatPct(ea.polymarketAskUp ?? ea.polymarketUp);
+    }
     edgeValue.textContent = (ea.edge >= 0 ? '+' : '') + formatPct(ea.edge);
+    if (ea.polymarketSpreadBps !== undefined && ea.polymarketSpreadBps > 1000) {
+      edgeValue.textContent += ' ⚠ wide spread';
+    }
+    if (edgeChainlinkEl && ea.edgeFromChainlink !== undefined) {
+      edgeChainlinkEl.textContent = (ea.edgeFromChainlink >= 0 ? '+' : '') + formatPct(ea.edgeFromChainlink);
+    }
     edgeWrap.classList.toggle('positive', ea.edge > 0.01);
     edgeWrap.classList.toggle('negative', ea.edge < -0.01);
     timeToRes.textContent = formatTime(ea.timeToResolution);
+    const pmMidEl = document.getElementById('polymarket-up');
+    if (pmMidEl) pmMidEl.textContent = 'Polymarket mid: ' + formatPct(ea.polymarketUp);
   } else {
     priceToBeat.textContent = '—';
     impliedUpBinance.textContent = '—';
     impliedUpChainlink.textContent = '—';
-    polymarketUp.textContent = '—';
+    const pmMidEl = document.getElementById('polymarket-up');
+    if (pmMidEl) pmMidEl.textContent = 'Polymarket mid: —';
     edgeValue.textContent = '—';
+    if (edgeChainlinkEl) edgeChainlinkEl.textContent = '—';
     edgeWrap.classList.remove('positive', 'negative');
     timeToRes.textContent = '—';
+    const pmMidEl2 = document.getElementById('polymarket-up');
+    if (pmMidEl2) pmMidEl2.textContent = 'Polymarket mid: —';
+  }
+
+  if (state.paperTrading) {
+    const pt = state.paperTrading;
+    const bal = pt.balance;
+    const initial = pt.initialBalance ?? 100;
+    paperBalance.textContent = typeof bal === 'number' ? `$${bal.toFixed(2)}` : '—';
+    paperBalance.className = 'paper-stat-value ' + (typeof bal === 'number' && bal >= initial ? 'positive' : 'negative');
+    paperPnl.textContent = `$${pt.totalPnl.toFixed(2)}`;
+    paperPnl.className = 'paper-stat-value ' + (pt.totalPnl >= 0 ? 'positive' : 'negative');
+    paperTrades.textContent = `${pt.totalTrades} (${pt.wins}W / ${pt.losses}L)`;
+    paperWinrate.textContent = pt.totalTrades > 0 ? `${pt.winRate.toFixed(1)}%` : '—';
+
+    if (paperByStrategyList && pt.byStrategy && Object.keys(pt.byStrategy).length > 0) {
+      const sorted = Object.entries(pt.byStrategy)
+        .sort(([, a], [, b]) => b.pnl - a.pnl);
+      paperByStrategyList.innerHTML = sorted
+        .map(([, s]) => {
+          const total = s.wins + s.losses;
+          const wr = total > 0 ? ((s.wins / total) * 100).toFixed(1) : '—';
+          const pnlClass = s.pnl >= 0 ? 'positive' : 'negative';
+          return `<div class="paper-strategy-row"><span>${s.name}</span><span class="${pnlClass}">$${s.pnl.toFixed(2)}</span><span>${s.wins}W/${s.losses}L (${wr}%)</span></div>`;
+        })
+        .join('');
+    } else if (paperByStrategyList) {
+      paperByStrategyList.textContent = 'No trades yet';
+    }
+
+    paperPositionsList.textContent = pt.positions.length
+      ? pt.positions.map((p) => `${p.strategyId} ${p.side} @ ${(p.entryPrice * 100).toFixed(1)}% (${p.timeToResolutionAtEntry}s left)`).join('\n')
+      : 'None';
+
+    const visibleTrades = pt.trades ?? [];
+
+    const strategyNames: Record<string, string> = {};
+    if (pt.byStrategy) {
+      for (const [id, s] of Object.entries(pt.byStrategy)) strategyNames[id] = s.name;
+    }
+    paperTradesContent.innerHTML = visibleTrades.length
+      ? visibleTrades.slice().reverse().map((t) =>
+          `<div class="paper-trade-row ${t.outcome}"><span>${strategyNames[t.strategyId] ?? t.strategyId} ${t.side} ${t.outcome}</span><span>$${t.pnl.toFixed(2)}</span></div>`
+        ).join('')
+      : 'None yet';
+  } else {
+    paperBalance.textContent = '—';
+    paperPnl.textContent = '—';
+    paperTrades.textContent = '—';
+    paperWinrate.textContent = '—';
+    if (paperByStrategyList) paperByStrategyList.textContent = '—';
+    paperPositionsList.textContent = '—';
+    paperTradesContent.textContent = '—';
   }
 }
 
@@ -152,3 +242,32 @@ async function poll() {
 
 poll();
 setInterval(poll, POLL_MS);
+
+async function doReset() {
+  const urls = ['/api/paper/clear', 'http://localhost:3847/api/paper/clear'];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { method: 'POST' });
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : {};
+      if (res.ok && (data.ok || data.cleared)) {
+        const state = await fetchState();
+        render(state);
+        return;
+      }
+    } catch {
+      continue;
+    }
+  }
+  console.error('Reset failed - try restarting the server');
+}
+
+document.getElementById('paper-clear-btn')?.addEventListener('click', async () => {
+  const btn = document.getElementById('paper-clear-btn');
+  if (btn) btn.disabled = true;
+  try {
+    await doReset();
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+});

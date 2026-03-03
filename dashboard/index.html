@@ -13,7 +13,7 @@
     <div id="app">
       <header>
         <h1>BTC Edge</h1>
-        <p class="subtitle">Binance Futures vs Polymarket 5m</p>
+        <p class="subtitle">Binance leads → Chainlink follows. Polymarket 5m settles on Chainlink.</p>
         <div class="status" id="status">Connecting...</div>
       </header>
 
@@ -56,33 +56,82 @@
 
         <section class="card edge-card">
           <h2>Edge Analysis</h2>
-          <div class="edge-grid">
-            <div class="edge-item">
-              <span class="edge-label">Price to beat (Chainlink at window start)</span>
-              <span id="price-to-beat">—</span>
-            </div>
-            <div class="edge-item">
-              <span class="edge-label">Implied Up (Binance vs start)</span>
-              <span id="implied-up-binance">—</span>
-            </div>
-            <div class="edge-item">
-              <span class="edge-label">Implied Up (Chainlink vs start)</span>
-              <span id="implied-up-chainlink">—</span>
-            </div>
-            <div class="edge-item">
-              <span class="edge-label">Polymarket Up</span>
-              <span id="polymarket-up">—</span>
-            </div>
-            <div class="edge-item highlight" id="edge-value-wrap">
-              <span class="edge-label">Edge (Chainlink implied − Polymarket)</span>
-              <span id="edge-value">—</span>
-            </div>
-            <div class="edge-item">
-              <span class="edge-label">Time to resolution</span>
-              <span id="time-to-res">—</span>
+          <div class="edge-section">
+            <div class="edge-section-title">Leading signal (Binance)</div>
+            <div class="edge-grid">
+              <div class="edge-item">
+                <span class="edge-label">Implied Up (Binance vs start)</span>
+                <span id="implied-up-binance">—</span>
+              </div>
+              <div class="edge-item">
+                <span class="edge-label">Up ask (tradeable)</span>
+                <span id="polymarket-ask">—</span>
+              </div>
+              <div class="edge-item highlight" id="edge-value-wrap">
+                <span class="edge-label">Edge (Binance implied − Up ask)</span>
+                <span id="edge-value">—</span>
+              </div>
             </div>
           </div>
-          <p class="edge-hint">Polymarket resolves on Chainlink. Edge = if Chainlink implies different direction than Polymarket odds.</p>
+          <div class="edge-section">
+            <div class="edge-section-title">Settlement (Chainlink)</div>
+            <div class="edge-grid">
+              <div class="edge-item">
+                <span class="edge-label">Price to beat (window start)</span>
+                <span id="price-to-beat">—</span>
+              </div>
+              <div class="edge-item">
+                <span class="edge-label">Implied Up (Chainlink vs start)</span>
+                <span id="implied-up-chainlink">—</span>
+              </div>
+              <div class="edge-item">
+                <span class="edge-label">Edge from Chainlink</span>
+                <span id="edge-chainlink">—</span>
+              </div>
+            </div>
+          </div>
+          <div class="edge-meta">
+            <span id="time-to-res">—</span>
+            <span class="edge-meta-sep">·</span>
+            <span id="polymarket-up">Polymarket mid: —</span>
+          </div>
+          <p class="edge-hint">Spread confirms: Binance &gt; Chainlink = lean Up. Early Edge = Binance leads, Chainlink near start. Agreement = both imply same direction.</p>
+        </section>
+
+        <section class="card paper-card">
+          <h2>Paper Trading</h2>
+          <p class="label">5 strategies ($5 each): Early Edge, Agreement, No-Trade Zone, Window Phase, Consensus Score. Starting balance: $100.</p>
+          <div class="paper-stats">
+            <div class="paper-stat">
+              <span class="paper-stat-label">Balance</span>
+              <span id="paper-balance" class="paper-stat-value">—</span>
+            </div>
+            <div class="paper-stat">
+              <span class="paper-stat-label">Total PnL</span>
+              <span id="paper-pnl" class="paper-stat-value">—</span>
+            </div>
+            <div class="paper-stat">
+              <span class="paper-stat-label">Trades</span>
+              <span id="paper-trades">—</span>
+            </div>
+            <div class="paper-stat">
+              <span class="paper-stat-label">Win Rate</span>
+              <span id="paper-winrate">—</span>
+            </div>
+          </div>
+          <button type="button" id="paper-clear-btn" class="paper-clear-btn">Reset all data & trades</button>
+          <div class="paper-by-strategy" id="paper-by-strategy">
+            <div class="paper-subtitle">PnL by Strategy</div>
+            <div id="paper-by-strategy-list">—</div>
+          </div>
+          <div class="paper-positions" id="paper-positions">
+            <div class="paper-subtitle">Open Positions</div>
+            <div id="paper-positions-list">—</div>
+          </div>
+          <div class="paper-trades" id="paper-trades-list">
+            <div class="paper-subtitle">Recent Trades</div>
+            <div id="paper-trades-content">—</div>
+          </div>
         </section>
 
         <section class="card link-card">

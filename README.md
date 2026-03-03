@@ -15,7 +15,8 @@ Polymarket's 5-minute BTC Up/Down markets resolve using **Chainlink BTC/USD**. T
 - **Dual price feeds**: Binance Futures (BTC/USDT) + Polymarket/Chainlink (BTC/USD)
 - **Spread tracking**: Dollar and basis-point difference between feeds
 - **5-minute market odds**: Live Up/Down probabilities from Polymarket
-- **Edge analysis**: Implied direction from each feed vs Polymarket odds
+- **Edge analysis**: Binance-leading edge vs Polymarket tradeable ask
+- **Paper trading**: Five strategy variants with per-strategy PnL
 - **Event-driven architecture**: WebSockets throughout, no polling
 
 ## Architecture
@@ -61,9 +62,8 @@ Polymarket's 5-minute BTC Up/Down markets resolve using **Chainlink BTC/USD**. T
 ## Quick Start
 
 ```bash
-git clone https://github.com/yourusername/btc-edge-dashboard.git
+git clone https://github.com/Gary-ForestStaking/btc-edge-dashboard.git
 cd btc-edge-dashboard
-
 npm install
 npm run start
 ```
@@ -82,6 +82,8 @@ Open **http://localhost:5173** in your browser.
 
 **GET** `http://localhost:3847/api/state`
 
+**POST/GET** `http://localhost:3847/api/paper/clear`
+
 Returns current state:
 
 ```json
@@ -93,16 +95,28 @@ Returns current state:
     "windowStart": 1772556600,
     "windowEnd": 1772556900,
     "upPrice": 0.52,
-    "downPrice": 0.48
+    "downPrice": 0.48,
+    "bestBidUp": 0.51,
+    "bestAskUp": 0.53
   },
   "edgeAnalysis": {
     "impliedUpFromBinance": 0.55,
     "impliedUpFromChainlink": 0.54,
     "polymarketUp": 0.52,
+    "polymarketAskUp": 0.53,
     "edge": 0.02,
+    "edgeFromChainlink": 0.01,
+    "polymarketSpreadBps": 200,
     "timeToResolution": 180,
     "binanceChainlinkSpread": 1.7,
     "binanceChainlinkSpreadBps": 2.5
+  },
+  "paperTrading": {
+    "balance": 100,
+    "initialBalance": 100,
+    "totalTrades": 0,
+    "totalPnl": 0,
+    "byStrategy": {}
   }
 }
 ```
@@ -113,7 +127,28 @@ Returns current state:
 2. **Implied Up (Binance)**: Current Binance price vs window start → mapped to 0–100% probability
 3. **Implied Up (Chainlink)**: Current Chainlink price vs window start → same mapping
 4. **Polymarket Up**: Live market odds for "Up" outcome
-5. **Edge**: `impliedUpFromChainlink - polymarketUp`. Positive = Polymarket may underpricing Up
+5. **Tradeable price**: Up uses `bestAskUp` (not midpoint) to avoid fake edge
+6. **Edge (primary)**: `impliedUpFromBinance - polymarketAskUp`
+7. **Edge (reference)**: `edgeFromChainlink = impliedUpFromChainlink - polymarketAskUp`
+
+## Paper Trading
+
+Five strategies run automatically in paper mode (no real money):
+
+| Strategy | Mode | Key Gate | Size |
+|----------|------|----------|------|
+| Early Edge | `early-edge` | Chainlink near 50%, spread direction confirm | ~$5/trade |
+| Agreement | `agreement` | Binance + Chainlink agree on direction | ~$5/trade |
+| No-Trade Zone | `no-trade-zone` | Skip extreme asks / wide PM spread | ~$5/trade |
+| Window Phase | `window-phase` | Dynamic threshold by time-to-resolution | ~$5/trade |
+| Consensus Score | `consensus` | Weighted score (Binance, Chainlink, spread) | ~$5/trade |
+
+- **TTR** = time to resolution (seconds)
+- **Spread confirm**: Binance-Chainlink spread must agree with edge direction
+- Each strategy takes at most one position per 5-min window
+- Reset button/API clears trades, open positions, and resets balance to initial
+
+Results appear in the dashboard Paper Trading section.
 
 ## Disclaimer
 

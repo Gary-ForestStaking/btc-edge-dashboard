@@ -14,10 +14,10 @@ export interface PolymarketUpdateEvent {
   slug: string;
   windowStart: number;  // Unix seconds
   windowEnd: number;
-  upPrice: number;     // Probability of Up (0-1)
+  upPrice: number;     // Midpoint (bid+ask)/2 for Up
   downPrice: number;   // Probability of Down (0-1)
-  bestBid: number;
-  bestAsk: number;
+  bestBidUp: number;   // Best bid for Up token
+  bestAskUp: number;   // Best ask for Up token (price to buy Up)
   timestamp: number;
 }
 
@@ -53,6 +53,8 @@ export interface MarketState {
     windowEnd: number;
     upPrice: number;
     downPrice: number;
+    bestBidUp: number;
+    bestAskUp: number;
     lastUpdate: number;
   } | null;
 }
@@ -61,8 +63,11 @@ export interface MarketState {
 export interface EdgeAnalysis {
   impliedUpFromBinance: number;
   impliedUpFromChainlink: number;
-  polymarketUp: number;
-  edge: number;
+  polymarketUp: number;           // Midpoint (display)
+  polymarketAskUp: number;        // Price to buy Up (used for edge)
+  edge: number;                   // Binance implied − polymarketAskUp (leading indicator)
+  edgeFromChainlink?: number;     // Chainlink implied − polymarketAskUp (for comparison)
+  polymarketSpreadBps?: number;    // (ask - bid) in bps, for illiquidity check
   timeToResolution: number;
   priceAtWindowStartBinance?: number;
   priceAtWindowStartChainlink?: number;
