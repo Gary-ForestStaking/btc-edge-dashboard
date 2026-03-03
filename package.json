@@ -1,0 +1,25 @@
+{
+  "name": "btc-edge-dashboard",
+  "version": "1.0.0",
+  "description": "Event-driven feed comparing Binance Futures BTC/USDT and Polymarket 5-min markets for edge analysis",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "npx tsx watch src/index.ts",
+    "feed": "npx tsx src/index.ts",
+    "dashboard": "vite",
+    "start": "concurrently \"npm run feed\" \"npm run dashboard\""
+  },
+  "dependencies": {
+    "eventemitter3": "^5.0.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/ws": "^8.5.13",
+    "concurrently": "^9.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3"
+  }
+}

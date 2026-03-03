@@ -1,0 +1,252 @@
+:root {
+  --bg: #0d0f12;
+  --surface: #161a20;
+  --border: #2a3038;
+  --text: #e6e9ef;
+  --text-muted: #8b92a0;
+  --accent: #00d4aa;
+  --accent-dim: #00a884;
+  --up: #22c55e;
+  --down: #ef4444;
+  --edge-positive: #22c55e;
+  --edge-negative: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Outfit', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+
+#app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.25rem;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  margin: 0 0 1rem;
+}
+
+.status {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  padding: 0.35rem 0.75rem;
+  background: var(--surface);
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.status.live {
+  color: var(--accent);
+  border: 1px solid var(--accent-dim);
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.card h2 {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.card .label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+}
+
+.price-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin: 1rem 0;
+}
+
+.price-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.price-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.price-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.price-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.spread-row {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.spread-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.spread-row span:last-child {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+}
+
+.spread-row.positive span:last-child { color: var(--up); }
+.spread-row.negative span:last-child { color: var(--down); }
+
+.price {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.odds {
+  display: flex;
+  gap: 1.5rem;
+  margin: 0.5rem 0;
+}
+
+.outcome {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.outcome span:first-child {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.outcome.up span:last-child {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--up);
+}
+
+.outcome.down span:last-child {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--down);
+}
+
+.meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.75rem;
+}
+
+.edge-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.edge-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.edge-item.highlight {
+  grid-column: span 2;
+  padding: 0.75rem;
+  background: rgba(0, 212, 170, 0.08);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.edge-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.edge-item span:last-child {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.edge-item.highlight.positive span:last-child {
+  color: var(--edge-positive);
+}
+
+.edge-item.highlight.negative span:last-child {
+  color: var(--edge-negative);
+}
+
+.edge-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0.5rem 0 0;
+}
+
+.link-card a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  display: block;
+  text-align: center;
+  padding: 0.5rem;
+}
+
+.link-card a:hover {
+  text-decoration: underline;
+}

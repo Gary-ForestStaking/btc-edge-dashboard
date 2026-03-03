@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BTC Edge - Binance vs Polymarket</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@300;500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>BTC Edge</h1>
+        <p class="subtitle">Binance Futures vs Polymarket 5m</p>
+        <div class="status" id="status">Connecting...</div>
+      </header>
+
+      <main>
+        <section class="card prices-card">
+          <h2>Price Feeds</h2>
+          <div class="price-row">
+            <div class="price-block">
+              <span class="price-label">Binance Futures</span>
+              <span class="price-value" id="binance-price">—</span>
+              <span class="price-meta">BTC/USDT</span>
+            </div>
+            <div class="price-block">
+              <span class="price-label">Polymarket (Chainlink)</span>
+              <span class="price-value" id="chainlink-price">—</span>
+              <span class="price-meta">Resolution source</span>
+            </div>
+          </div>
+          <div class="spread-row" id="spread-row">
+            <span class="spread-label">Spread (Binance − Chainlink)</span>
+            <span id="spread-value">—</span>
+          </div>
+        </section>
+
+        <section class="card polymarket-card">
+          <h2>Polymarket 5m Odds</h2>
+          <p class="label" id="pm-window">—</p>
+          <div class="odds">
+            <div class="outcome up">
+              <span>Up</span>
+              <span id="pm-up">—</span>
+            </div>
+            <div class="outcome down">
+              <span>Down</span>
+              <span id="pm-down">—</span>
+            </div>
+          </div>
+          <div class="meta" id="pm-meta">—</div>
+        </section>
+
+        <section class="card edge-card">
+          <h2>Edge Analysis</h2>
+          <div class="edge-grid">
+            <div class="edge-item">
+              <span class="edge-label">Price to beat (Chainlink at window start)</span>
+              <span id="price-to-beat">—</span>
+            </div>
+            <div class="edge-item">
+              <span class="edge-label">Implied Up (Binance vs start)</span>
+              <span id="implied-up-binance">—</span>
+            </div>
+            <div class="edge-item">
+              <span class="edge-label">Implied Up (Chainlink vs start)</span>
+              <span id="implied-up-chainlink">—</span>
+            </div>
+            <div class="edge-item">
+              <span class="edge-label">Polymarket Up</span>
+              <span id="polymarket-up">—</span>
+            </div>
+            <div class="edge-item highlight" id="edge-value-wrap">
+              <span class="edge-label">Edge (Chainlink implied − Polymarket)</span>
+              <span id="edge-value">—</span>
+            </div>
+            <div class="edge-item">
+              <span class="edge-label">Time to resolution</span>
+              <span id="time-to-res">—</span>
+            </div>
+          </div>
+          <p class="edge-hint">Polymarket resolves on Chainlink. Edge = if Chainlink implies different direction than Polymarket odds.</p>
+        </section>
+
+        <section class="card link-card">
+          <a href="https://polymarket.com/event/btc-up-or-down-5m" target="_blank" rel="noopener">
+            View on Polymarket →
+          </a>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
