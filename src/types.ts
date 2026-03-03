@@ -62,12 +62,16 @@ export interface MarketState {
 /** Edge analysis result */
 export interface EdgeAnalysis {
   impliedUpFromBinance: number;
+  impliedUpVolAdj: number;
+  oldLinearImpliedUp: number;
   impliedUpFromChainlink: number;
   polymarketUp: number;           // Midpoint (display)
   polymarketAskUp: number;        // Price to buy Up (used for edge)
   edge: number;                   // Binance implied − polymarketAskUp (leading indicator)
   edgeFromChainlink?: number;     // Chainlink implied − polymarketAskUp (for comparison)
   polymarketSpreadBps?: number;    // (ask - bid) in bps, for illiquidity check
+  realizedVol?: number;
+  tau?: number;
   timeToResolution: number;
   priceAtWindowStartBinance?: number;
   priceAtWindowStartChainlink?: number;

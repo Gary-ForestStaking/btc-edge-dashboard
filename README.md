@@ -15,7 +15,8 @@ Polymarket's 5-minute BTC Up/Down markets resolve using **Chainlink BTC/USD**. T
 - **Dual price feeds**: Binance Futures (BTC/USDT) + Polymarket/Chainlink (BTC/USD)
 - **Spread tracking**: Dollar and basis-point difference between feeds
 - **5-minute market odds**: Live Up/Down probabilities from Polymarket
-- **Edge analysis**: Binance-leading edge vs Polymarket tradeable ask
+- **Edge analysis**: Volatility-adjusted Binance probability vs Polymarket tradeable ask
+- **Model toggle**: Vol-adjusted vs legacy linear implied model on dashboard
 - **Paper trading**: Five strategy variants with per-strategy PnL
 - **Event-driven architecture**: WebSockets throughout, no polling
 
@@ -101,12 +102,16 @@ Returns current state:
   },
   "edgeAnalysis": {
     "impliedUpFromBinance": 0.55,
+    "impliedUpVolAdj": 0.55,
+    "oldLinearImpliedUp": 0.51,
     "impliedUpFromChainlink": 0.54,
     "polymarketUp": 0.52,
     "polymarketAskUp": 0.53,
     "edge": 0.02,
     "edgeFromChainlink": 0.01,
     "polymarketSpreadBps": 200,
+    "realizedVol": 0.72,
+    "tau": 0.0000057,
     "timeToResolution": 180,
     "binanceChainlinkSpread": 1.7,
     "binanceChainlinkSpreadBps": 2.5
@@ -124,12 +129,13 @@ Returns current state:
 ## How Edge Analysis Works
 
 1. **Price to beat**: Chainlink price when the 5-minute window started (Polymarket's resolution source)
-2. **Implied Up (Binance)**: Current Binance price vs window start → mapped to 0–100% probability
-3. **Implied Up (Chainlink)**: Current Chainlink price vs window start → same mapping
-4. **Polymarket Up**: Live market odds for "Up" outcome
+2. **Rolling volatility**: 60-second realized volatility from Binance log returns, annualized
+3. **Time to resolution**: `tau = timeToResolutionSeconds / secondsPerYear` (epsilon clamped)
+4. **Vol-adjusted implied up**:
+   `P(Up) = Φ( ln(S/S0) / (sigma * sqrt(tau)) )`
 5. **Tradeable price**: Up uses `bestAskUp` (not midpoint) to avoid fake edge
-6. **Edge (primary)**: `impliedUpFromBinance - polymarketAskUp`
-7. **Edge (reference)**: `edgeFromChainlink = impliedUpFromChainlink - polymarketAskUp`
+6. **Edge (primary)**: `impliedUpVolAdj - polymarketAskUp`
+7. **Comparison model**: `oldLinearImpliedUp` is still exposed for side-by-side dashboard comparison
 
 ## Paper Trading
 

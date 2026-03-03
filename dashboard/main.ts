@@ -15,12 +15,16 @@ interface ApiState {
   } | null;
   edgeAnalysis: {
     impliedUpFromBinance: number;
+    impliedUpVolAdj: number;
+    oldLinearImpliedUp: number;
     impliedUpFromChainlink: number;
     polymarketUp: number;
     polymarketAskUp: number;
     edge: number;
     edgeFromChainlink?: number;
     polymarketSpreadBps?: number;
+    realizedVol?: number;
+    tau?: number;
     timeToResolution: number;
     priceAtWindowStartBinance?: number;
     priceAtWindowStartChainlink?: number;
@@ -49,6 +53,25 @@ function formatPrice(n: number): string {
 
 function formatPct(n: number): string {
   return (n * 100).toFixed(1) + '%';
+}
+
+function formatVol(n?: number): string {
+  if (n === undefined || !Number.isFinite(n)) return '—';
+  return `${(n * 100).toFixed(1)}%`;
+}
+
+function formatTau(n?: number): string {
+  if (n === undefined || !Number.isFinite(n)) return '—';
+  return n.toExponential(3);
+}
+
+function getUseVolAdjustedModel(): boolean {
+  const raw = localStorage.getItem('use-vol-adjusted-model');
+  return raw !== '0';
+}
+
+function setUseVolAdjustedModel(v: boolean): void {
+  localStorage.setItem('use-vol-adjusted-model', v ? '1' : '0');
 }
 
 function formatTime(sec: number): string {
@@ -95,12 +118,17 @@ function render(state: ApiState | null) {
   const pmMeta = document.getElementById('pm-meta')!;
   const priceToBeat = document.getElementById('price-to-beat')!;
   const impliedUpBinance = document.getElementById('implied-up-binance')!;
+  const impliedUpVol = document.getElementById('implied-up-vol')!;
+  const impliedUpLinear = document.getElementById('implied-up-linear')!;
+  const realizedVolEl = document.getElementById('realized-vol')!;
+  const tauYearsEl = document.getElementById('tau-years')!;
   const impliedUpChainlink = document.getElementById('implied-up-chainlink')!;
   const polymarketUp = document.getElementById('polymarket-up')!;
   const polymarketAskEl = document.getElementById('polymarket-ask');
-  const edgeValue = document.getElementById('edge-value')!;
-  const edgeChainlinkEl = document.getElementById('edge-chainlink');
   const edgeWrap = document.getElementById('edge-value-wrap')!;
+  const edgeValue = document.getElementById('edge-value')!;
+  const edgeLabel = edgeWrap.querySelector('.edge-label');
+  const edgeChainlinkEl = document.getElementById('edge-chainlink');
   const timeToRes = document.getElementById('time-to-res')!;
   const paperBalance = document.getElementById('paper-balance')!;
   const paperPnl = document.getElementById('paper-pnl')!;
@@ -149,29 +177,47 @@ function render(state: ApiState | null) {
 
   if (state.edgeAnalysis) {
     const ea = state.edgeAnalysis;
+    const useVolModel = getUseVolAdjustedModel();
+    const linearEdge = (ea.oldLinearImpliedUp ?? ea.impliedUpFromBinance) - ea.polymarketAskUp;
+    const selectedImpliedUp = useVolModel ? ea.impliedUpVolAdj : (ea.oldLinearImpliedUp ?? ea.impliedUpFromBinance);
+    const selectedEdge = useVolModel ? ea.edge : linearEdge;
+
     priceToBeat.textContent = ea.priceAtWindowStartChainlink && ea.priceAtWindowStartChainlink > 0
       ? formatPrice(ea.priceAtWindowStartChainlink)
       : '—';
-    impliedUpBinance.textContent = formatPct(ea.impliedUpFromBinance);
+    impliedUpBinance.textContent = formatPct(selectedImpliedUp);
+    impliedUpVol.textContent = formatPct(ea.impliedUpVolAdj);
+    impliedUpLinear.textContent = formatPct(ea.oldLinearImpliedUp ?? ea.impliedUpFromBinance);
+    realizedVolEl.textContent = formatVol(ea.realizedVol);
+    tauYearsEl.textContent = formatTau(ea.tau);
     impliedUpChainlink.textContent = formatPct(ea.impliedUpFromChainlink);
     if (polymarketAskEl) {
       polymarketAskEl.textContent = formatPct(ea.polymarketAskUp ?? ea.polymarketUp);
     }
-    edgeValue.textContent = (ea.edge >= 0 ? '+' : '') + formatPct(ea.edge);
+    edgeValue.textContent = (selectedEdge >= 0 ? '+' : '') + formatPct(selectedEdge);
+    if (edgeLabel) {
+      edgeLabel.textContent = useVolModel
+        ? 'Edge (Vol-Adjusted implied − Up ask)'
+        : 'Edge (Linear implied − Up ask)';
+    }
     if (ea.polymarketSpreadBps !== undefined && ea.polymarketSpreadBps > 1000) {
       edgeValue.textContent += ' ⚠ wide spread';
     }
     if (edgeChainlinkEl && ea.edgeFromChainlink !== undefined) {
       edgeChainlinkEl.textContent = (ea.edgeFromChainlink >= 0 ? '+' : '') + formatPct(ea.edgeFromChainlink);
     }
-    edgeWrap.classList.toggle('positive', ea.edge > 0.01);
-    edgeWrap.classList.toggle('negative', ea.edge < -0.01);
+    edgeWrap.classList.toggle('positive', selectedEdge > 0.01);
+    edgeWrap.classList.toggle('negative', selectedEdge < -0.01);
     timeToRes.textContent = formatTime(ea.timeToResolution);
     const pmMidEl = document.getElementById('polymarket-up');
     if (pmMidEl) pmMidEl.textContent = 'Polymarket mid: ' + formatPct(ea.polymarketUp);
   } else {
     priceToBeat.textContent = '—';
     impliedUpBinance.textContent = '—';
+    impliedUpVol.textContent = '—';
+    impliedUpLinear.textContent = '—';
+    realizedVolEl.textContent = '—';
+    tauYearsEl.textContent = '—';
     impliedUpChainlink.textContent = '—';
     const pmMidEl = document.getElementById('polymarket-up');
     if (pmMidEl) pmMidEl.textContent = 'Polymarket mid: —';
@@ -260,6 +306,14 @@ async function doReset() {
     }
   }
   console.error('Reset failed - try restarting the server');
+}
+
+const modelToggle = document.getElementById('model-toggle') as HTMLInputElement | null;
+if (modelToggle) {
+  modelToggle.checked = getUseVolAdjustedModel();
+  modelToggle.addEventListener('change', () => {
+    setUseVolAdjustedModel(modelToggle.checked);
+  });
 }
 
 document.getElementById('paper-clear-btn')?.addEventListener('click', async () => {

@@ -60,12 +60,34 @@
             <div class="edge-section-title">Leading signal (Binance)</div>
             <div class="edge-grid">
               <div class="edge-item">
-                <span class="edge-label">Implied Up (Binance vs start)</span>
+                <span class="edge-label">Implied Up (Vol-Adjusted)</span>
+                <span id="implied-up-vol">—</span>
+              </div>
+              <div class="edge-item">
+                <span class="edge-label">Implied Up (Linear, legacy)</span>
+                <span id="implied-up-linear">—</span>
+              </div>
+              <div class="edge-item">
+                <span class="edge-label">Realized Vol (annualized)</span>
+                <span id="realized-vol">—</span>
+              </div>
+              <div class="edge-item">
+                <span class="edge-label">τ (years)</span>
+                <span id="tau-years">—</span>
+              </div>
+              <div class="edge-item">
+                <span class="edge-label">Implied Up (model output)</span>
                 <span id="implied-up-binance">—</span>
               </div>
               <div class="edge-item">
                 <span class="edge-label">Up ask (tradeable)</span>
                 <span id="polymarket-ask">—</span>
+              </div>
+              <div class="edge-item">
+                <label class="edge-toggle" for="model-toggle">
+                  <input type="checkbox" id="model-toggle" checked />
+                  Use Vol-Adjusted Model
+                </label>
               </div>
               <div class="edge-item highlight" id="edge-value-wrap">
                 <span class="edge-label">Edge (Binance implied − Up ask)</span>

@@ -254,6 +254,18 @@ main {
   font-weight: 600;
 }
 
+.edge-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.edge-toggle input {
+  accent-color: var(--accent);
+}
+
 .edge-item.highlight.positive span:last-child {
   color: var(--edge-positive);
 }

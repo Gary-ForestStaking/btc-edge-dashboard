@@ -1,6 +1,11 @@
 import { feedEvents } from './events.js';
 import type { MarketState, EdgeAnalysis } from './types.js';
 import { secondsUntilWindowEnd } from './feeds/polymarket-utils.js';
+import {
+  RollingRealizedVolatility,
+  impliedUpVolAdjusted,
+  tauYearsFromSeconds,
+} from './volatility.js';
 
 /** In-memory state for dashboard - updated by event handlers */
 export const state: MarketState = {
@@ -17,6 +22,7 @@ export const state: MarketState = {
 let priceAtWindowStartBinance = 0;
 let priceAtWindowStartChainlink = 0;
 let currentWindowSlug = '';
+const volEstimator = new RollingRealizedVolatility(60_000);
 
 function isFallbackPolymarketUpdate(e: {
   upPrice: number;
@@ -37,6 +43,7 @@ function initListeners() {
     state.binance.lastPrice = e.price;
     state.binance.lastUpdate = e.timestamp;
     state.binance.tradeCount++;
+    volEstimator.addPrice(e.price, e.timestamp);
     if (currentWindowSlug && priceAtWindowStartBinance <= 0 && e.price > 0) {
       priceAtWindowStartBinance = e.price;
     }
@@ -95,14 +102,24 @@ export function getEdgeAnalysis(): EdgeAnalysis | null {
 
   const pm = state.polymarket;
   const timeToResolution = secondsUntilWindowEnd(pm.windowStart);
-  const impliedUpBinance = impliedUpFromPrice(state.binance.lastPrice, priceAtWindowStartBinance);
+  const oldLinearImpliedUp = impliedUpFromPrice(state.binance.lastPrice, priceAtWindowStartBinance);
+  const realizedVol = volEstimator.getAnnualizedVol(Date.now());
+  const tau = tauYearsFromSeconds(timeToResolution);
+  const impliedUpVolAdj = impliedUpVolAdjusted(
+    state.binance.lastPrice,
+    priceAtWindowStartBinance,
+    realizedVol,
+    timeToResolution,
+  );
+  // Keep this key for compatibility, but now source it from vol-adjusted model.
+  const impliedUpBinance = impliedUpVolAdj;
   const chainlinkPrice = state.polymarketPrice?.price ?? 0;
   const impliedUpChainlink = impliedUpFromPrice(chainlinkPrice, priceAtWindowStartChainlink);
   const polymarketUp = pm.upPrice;
   const polymarketAskUp = pm.bestAskUp > 0 && pm.bestAskUp < 1 ? pm.bestAskUp : polymarketUp;
 
-  // Binance as leading indicator: Binance moves first, Chainlink follows. Edge = Binance implied − Polymarket ask.
-  const edge = impliedUpBinance - polymarketAskUp;
+  // Primary edge now uses volatility-adjusted Binance probability.
+  const edge = impliedUpVolAdj - polymarketAskUp;
   const edgeFromChainlink = impliedUpChainlink - polymarketAskUp;
   const polymarketSpreadBps =
     pm.bestAskUp >= 0 && pm.bestBidUp >= 0
@@ -118,12 +135,16 @@ export function getEdgeAnalysis(): EdgeAnalysis | null {
 
   return {
     impliedUpFromBinance: impliedUpBinance,
+    impliedUpVolAdj,
+    oldLinearImpliedUp,
     impliedUpFromChainlink: impliedUpChainlink,
     polymarketUp,
     polymarketAskUp,
     edge,
     edgeFromChainlink,
     polymarketSpreadBps,
+    realizedVol,
+    tau,
     timeToResolution,
     priceAtWindowStartBinance: priceAtWindowStartBinance || undefined,
     priceAtWindowStartChainlink: priceAtWindowStartChainlink || undefined,
