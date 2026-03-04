@@ -1,6 +1,18 @@
 // Use proxy when running via Vite dev server
 const API_URL = '/api/state';
 const POLL_MS = 500;
+const ORDERBOOK_HISTORY_MS = 60_000;
+const ORDERBOOK_POINTS_MAX = 120;
+const COLLAPSE_BID_THRESHOLD = 0.08;
+
+interface ObPoint {
+  ts: number;
+  bid: number;
+  ask: number;
+}
+
+const orderbookHistory: ObPoint[] = [];
+let lastOrderbookTs = 0;
 
 interface ApiState {
   binance: { lastPrice: number; lastUpdate: number; tradeCount: number };
@@ -122,6 +134,99 @@ function setBarWidth(el: HTMLElement | null, prob: number): void {
   el.style.width = `${pct}%`;
 }
 
+function clamp01(n: number): number {
+  return Math.max(0, Math.min(1, n));
+}
+
+function pushOrderbookPoint(ts: number, bid: number, ask: number): void {
+  if (!Number.isFinite(ts) || ts <= 0 || ts === lastOrderbookTs) return;
+  lastOrderbookTs = ts;
+  orderbookHistory.push({ ts, bid: clamp01(bid), ask: clamp01(ask) });
+  const cutoff = ts - ORDERBOOK_HISTORY_MS;
+  while (orderbookHistory.length && orderbookHistory[0].ts < cutoff) {
+    orderbookHistory.shift();
+  }
+  if (orderbookHistory.length > ORDERBOOK_POINTS_MAX) {
+    orderbookHistory.splice(0, orderbookHistory.length - ORDERBOOK_POINTS_MAX);
+  }
+}
+
+function linePath(points: ObPoint[], width: number, height: number, key: 'bid' | 'ask'): string {
+  if (points.length < 2) return '';
+  const minTs = points[0].ts;
+  const maxTs = points[points.length - 1].ts;
+  const span = Math.max(1, maxTs - minTs);
+  return points.map((p, i) => {
+    const x = ((p.ts - minTs) / span) * width;
+    const y = (1 - clamp01(p[key])) * height;
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(' ');
+}
+
+function spreadBandPath(points: ObPoint[], width: number, height: number): string {
+  if (points.length < 2) return '';
+  const minTs = points[0].ts;
+  const maxTs = points[points.length - 1].ts;
+  const span = Math.max(1, maxTs - minTs);
+  const top = points.map((p) => {
+    const x = ((p.ts - minTs) / span) * width;
+    const y = (1 - clamp01(p.ask)) * height;
+    return `${x.toFixed(2)} ${y.toFixed(2)}`;
+  });
+  const bottom = points.slice().reverse().map((p) => {
+    const x = ((p.ts - minTs) / span) * width;
+    const y = (1 - clamp01(p.bid)) * height;
+    return `${x.toFixed(2)} ${y.toFixed(2)}`;
+  });
+  return `M${top[0]} L${top.slice(1).join(' L')} L${bottom.join(' L')} Z`;
+}
+
+function formatMoney(n: number): string {
+  const sign = n > 0 ? '+' : '';
+  return `${sign}$${n.toFixed(2)}`;
+}
+
+function computeHealthMetrics(trades: Array<{ pnl: number; outcome: string }>) {
+  if (!trades.length) return null;
+
+  const wins = trades.filter((t) => t.outcome === 'win').map((t) => t.pnl);
+  const losses = trades.filter((t) => t.outcome === 'loss').map((t) => t.pnl);
+  const totalPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
+  const expectancy = totalPnl / trades.length;
+
+  const avgWin = wins.length ? wins.reduce((a, b) => a + b, 0) / wins.length : 0;
+  const avgLossMag = losses.length
+    ? Math.abs(losses.reduce((a, b) => a + b, 0) / losses.length)
+    : 0;
+  const winLossRatio = avgLossMag > 0 ? avgWin / avgLossMag : null;
+
+  let equity = 0;
+  let peak = 0;
+  let maxDrawdown = 0;
+  for (const t of trades) {
+    equity += t.pnl;
+    peak = Math.max(peak, equity);
+    maxDrawdown = Math.max(maxDrawdown, peak - equity);
+  }
+
+  const last50 = trades.slice(-50);
+  const last50Pnl = last50.reduce((sum, t) => sum + t.pnl, 0);
+  const last50Wins = last50.filter((t) => t.outcome === 'win').length;
+  const last50WinRate = last50.length ? (last50Wins / last50.length) * 100 : 0;
+
+  return {
+    expectancy,
+    avgWin,
+    avgLossMag,
+    winLossRatio,
+    maxDrawdown,
+    last50Pnl,
+    last50WinRate,
+    sampleSize: trades.length,
+    last50Count: last50.length,
+  };
+}
+
 function render(state: ApiState | null) {
   const statusEl = document.getElementById('status')!;
   const binancePrice = document.getElementById('binance-price')!;
@@ -140,6 +245,13 @@ function render(state: ApiState | null) {
   const obUpAskBar = document.getElementById('ob-up-ask-bar') as HTMLElement | null;
   const obDownBidBar = document.getElementById('ob-down-bid-bar') as HTMLElement | null;
   const obDownAskBar = document.getElementById('ob-down-ask-bar') as HTMLElement | null;
+  const obSpreadBps = document.getElementById('ob-spread-bps');
+  const obMid = document.getElementById('ob-mid');
+  const obRegime = document.getElementById('ob-regime');
+  const obImbalanceFill = document.getElementById('ob-imbalance-fill') as HTMLElement | null;
+  const obBidLine = document.getElementById('ob-bid-line');
+  const obAskLine = document.getElementById('ob-ask-line');
+  const obSpreadBand = document.getElementById('ob-spread-band');
   const priceToBeat = document.getElementById('price-to-beat')!;
   const impliedUpBinance = document.getElementById('implied-up-binance')!;
   const impliedUpVol = document.getElementById('implied-up-vol')!;
@@ -159,6 +271,7 @@ function render(state: ApiState | null) {
   const paperTrades = document.getElementById('paper-trades')!;
   const paperWinrate = document.getElementById('paper-winrate')!;
   const paperByStrategyList = document.getElementById('paper-by-strategy-list');
+  const paperHealthGrid = document.getElementById('paper-health-grid');
   const paperPositionsList = document.getElementById('paper-positions-list')!;
   const paperTradesContent = document.getElementById('paper-trades-content')!;
 
@@ -197,14 +310,47 @@ function render(state: ApiState | null) {
     const upAsk = pm.bestAskUp;
     const downBid = 1 - upAsk;
     const downAsk = 1 - upBid;
+    const mid = (upBid + upAsk) / 2;
+    const spreadBps = (upAsk - upBid) * 10000;
+    const downSideCollapsed = downBid <= COLLAPSE_BID_THRESHOLD || upAsk >= 0.96;
+    const upSideCollapsed = upBid <= COLLAPSE_BID_THRESHOLD || downAsk >= 0.96;
+    const regime = downSideCollapsed && upSideCollapsed
+      ? 'Both sides thin'
+      : downSideCollapsed
+        ? 'Down collapsed'
+        : upSideCollapsed
+          ? 'Up collapsed'
+          : 'Balanced';
+    const imbalance = Math.max(-1, Math.min(1, upBid + upAsk - 1));
+
     if (obUpBid) obUpBid.textContent = formatPct(upBid);
     if (obUpAsk) obUpAsk.textContent = formatPct(upAsk);
     if (obDownBid) obDownBid.textContent = formatPct(downBid);
     if (obDownAsk) obDownAsk.textContent = formatPct(downAsk);
+    if (obSpreadBps) obSpreadBps.textContent = `${spreadBps.toFixed(1)} bps`;
+    if (obMid) obMid.textContent = formatPct(mid);
+    if (obRegime) obRegime.textContent = regime;
+
     setBarWidth(obUpBidBar, upBid);
     setBarWidth(obUpAskBar, upAsk);
     setBarWidth(obDownBidBar, downBid);
     setBarWidth(obDownAskBar, downAsk);
+
+    if (obImbalanceFill) {
+      const widthPct = Math.abs(imbalance) * 100;
+      obImbalanceFill.style.width = `${widthPct / 2}%`;
+      obImbalanceFill.style.left = imbalance >= 0 ? '50%' : `${50 - (widthPct / 2)}%`;
+      obImbalanceFill.classList.toggle('negative', imbalance < 0);
+    }
+
+    pushOrderbookPoint(pm.lastUpdate || Date.now(), upBid, upAsk);
+    if (obBidLine && obAskLine && obSpreadBand) {
+      const width = 640;
+      const height = 170;
+      obBidLine.setAttribute('d', linePath(orderbookHistory, width, height, 'bid'));
+      obAskLine.setAttribute('d', linePath(orderbookHistory, width, height, 'ask'));
+      obSpreadBand.setAttribute('d', spreadBandPath(orderbookHistory, width, height));
+    }
   } else {
     pmWindow.textContent = '—';
     pmUp.textContent = '—';
@@ -214,10 +360,23 @@ function render(state: ApiState | null) {
     if (obUpAsk) obUpAsk.textContent = '—';
     if (obDownBid) obDownBid.textContent = '—';
     if (obDownAsk) obDownAsk.textContent = '—';
+    if (obSpreadBps) obSpreadBps.textContent = '—';
+    if (obMid) obMid.textContent = '—';
+    if (obRegime) obRegime.textContent = '—';
     setBarWidth(obUpBidBar, 0);
     setBarWidth(obUpAskBar, 0);
     setBarWidth(obDownBidBar, 0);
     setBarWidth(obDownAskBar, 0);
+    if (obImbalanceFill) {
+      obImbalanceFill.style.width = '0%';
+      obImbalanceFill.style.left = '50%';
+      obImbalanceFill.classList.remove('negative');
+    }
+    if (obBidLine) obBidLine.setAttribute('d', '');
+    if (obAskLine) obAskLine.setAttribute('d', '');
+    if (obSpreadBand) obSpreadBand.setAttribute('d', '');
+    orderbookHistory.length = 0;
+    lastOrderbookTs = 0;
   }
 
   if (state.edgeAnalysis) {
@@ -306,6 +465,24 @@ function render(state: ApiState | null) {
       : 'None';
 
     const visibleTrades = pt.trades ?? [];
+    const health = computeHealthMetrics(visibleTrades);
+    if (paperHealthGrid) {
+      if (health) {
+        const ratioText = health.winLossRatio !== null ? health.winLossRatio.toFixed(2) : '—';
+        paperHealthGrid.innerHTML = [
+          `<div class="health-cell"><span>Expectancy / trade</span><strong class="${health.expectancy >= 0 ? 'positive' : 'negative'}">${formatMoney(health.expectancy)}</strong></div>`,
+          `<div class="health-cell"><span>Avg win</span><strong class="positive">${formatMoney(health.avgWin)}</strong></div>`,
+          `<div class="health-cell"><span>Avg loss (abs)</span><strong class="negative">$${health.avgLossMag.toFixed(2)}</strong></div>`,
+          `<div class="health-cell"><span>Win/Loss ratio</span><strong>${ratioText}</strong></div>`,
+          `<div class="health-cell"><span>Max drawdown</span><strong class="negative">$${health.maxDrawdown.toFixed(2)}</strong></div>`,
+          `<div class="health-cell"><span>Rolling 50 PnL</span><strong class="${health.last50Pnl >= 0 ? 'positive' : 'negative'}">${formatMoney(health.last50Pnl)}</strong></div>`,
+          `<div class="health-cell"><span>Rolling 50 win rate</span><strong>${health.last50WinRate.toFixed(1)}% (${health.last50Count})</strong></div>`,
+          `<div class="health-cell"><span>Sample size</span><strong>${health.sampleSize}</strong></div>`,
+        ].join('');
+      } else {
+        paperHealthGrid.textContent = 'No trades yet';
+      }
+    }
 
     const strategyNames: Record<string, string> = {};
     if (pt.byStrategy) {
@@ -322,6 +499,7 @@ function render(state: ApiState | null) {
     paperTrades.textContent = '—';
     paperWinrate.textContent = '—';
     if (paperByStrategyList) paperByStrategyList.textContent = '—';
+    if (paperHealthGrid) paperHealthGrid.textContent = '—';
     paperPositionsList.textContent = '—';
     paperTradesContent.textContent = '—';
   }

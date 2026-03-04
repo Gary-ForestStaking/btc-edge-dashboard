@@ -36,6 +36,14 @@
             <span class="spread-label">Spread (Binance − Chainlink)</span>
             <span id="spread-value">—</span>
           </div>
+          <div class="top-figures-row">
+            <span class="spread-label">Time to resolution</span>
+            <span id="time-to-res">—</span>
+          </div>
+          <div class="top-figures-row">
+            <span class="spread-label">Price to beat (window start)</span>
+            <span id="price-to-beat">—</span>
+          </div>
         </section>
 
         <section class="card polymarket-card">
@@ -56,6 +64,11 @@
 
         <section class="card orderbook-card">
           <h2>Order Book Visual</h2>
+          <div class="ob-metrics">
+            <span class="ob-chip">Spread: <strong id="ob-spread-bps">—</strong></span>
+            <span class="ob-chip">Mid: <strong id="ob-mid">—</strong></span>
+            <span class="ob-chip">Signal: <strong id="ob-regime">—</strong></span>
+          </div>
           <div class="ob-grid">
             <div class="ob-row">
               <span class="ob-label">Up Bid</span>
@@ -78,7 +91,29 @@
               <span id="ob-down-ask" class="ob-value">—</span>
             </div>
           </div>
-          <p class="edge-hint">Bars show top-of-book price levels (0-100%) for both sides.</p>
+          <div class="ob-imbalance-wrap">
+            <div class="ob-imbalance-label">
+              <span>Down pressure</span>
+              <span>Orderbook imbalance</span>
+              <span>Up pressure</span>
+            </div>
+            <div class="ob-imbalance-track">
+              <div class="ob-imbalance-center"></div>
+              <div id="ob-imbalance-fill" class="ob-imbalance-fill"></div>
+            </div>
+          </div>
+          <div class="ob-chart-wrap">
+            <svg id="ob-chart" viewBox="0 0 640 170" preserveAspectRatio="none" aria-label="Orderbook tape">
+              <path id="ob-spread-band" class="ob-spread-band"></path>
+              <path id="ob-bid-line" class="ob-bid-line"></path>
+              <path id="ob-ask-line" class="ob-ask-line"></path>
+            </svg>
+            <div class="ob-chart-meta">
+              <span>Last 60s tape (Up bid/ask)</span>
+              <span>0% → 100%</span>
+            </div>
+          </div>
+          <p class="edge-hint">Top-of-book only, updated live from Polymarket CLOB.</p>
         </section>
 
         <section class="card edge-card">
@@ -126,10 +161,6 @@
             <div class="edge-section-title">Settlement (Chainlink)</div>
             <div class="edge-grid">
               <div class="edge-item">
-                <span class="edge-label">Price to beat (window start)</span>
-                <span id="price-to-beat">—</span>
-              </div>
-              <div class="edge-item">
                 <span class="edge-label">Implied Up (Chainlink vs start)</span>
                 <span id="implied-up-chainlink">—</span>
               </div>
@@ -140,8 +171,6 @@
             </div>
           </div>
           <div class="edge-meta">
-            <span id="time-to-res">—</span>
-            <span class="edge-meta-sep">·</span>
             <span id="polymarket-up">Polymarket mid: —</span>
           </div>
           <p class="edge-hint">Late Anchor: late-window orderbook-collapse entries only.</p>
@@ -167,6 +196,10 @@
               <span class="paper-stat-label">Win Rate</span>
               <span id="paper-winrate">—</span>
             </div>
+          </div>
+          <div class="paper-health">
+            <div class="paper-subtitle">Strategy Health</div>
+            <div id="paper-health-grid" class="paper-health-grid">—</div>
           </div>
           <button type="button" id="paper-clear-btn" class="paper-clear-btn">Reset all data & trades</button>
           <div class="paper-by-strategy" id="paper-by-strategy">
