@@ -15,10 +15,10 @@ Polymarket's 5-minute BTC Up/Down markets resolve using **Chainlink BTC/USD**. T
 - **Dual price feeds**: Binance Futures (BTC/USDT) + Polymarket/Chainlink (BTC/USD)
 - **Spread tracking**: Dollar and basis-point difference between feeds
 - **5-minute market odds**: Live Up/Down probabilities from Polymarket
-- **Order book visual**: Live top-of-book bars for Up/Down bid/ask levels
+- **Order book visual**: Top-of-book bars, spread/mid chips, imbalance meter, and 60s bid/ask tape
 - **Edge analysis**: Volatility-adjusted Binance probability vs Polymarket tradeable ask
 - **Model toggle**: Vol-adjusted vs legacy linear implied model on dashboard
-- **Paper trading**: Single Late Anchor strategy with per-strategy stats
+- **Paper trading diagnostics**: Strategy health + segmented performance buckets
 - **Event-driven architecture**: WebSockets throughout, no polling
 
 ## Architecture
@@ -120,6 +120,19 @@ Returns current state:
   "paperTrading": {
     "balance": 100,
     "initialBalance": 100,
+    "trades": [
+      {
+        "positionId": "pos_1_1772630660855",
+        "strategyId": "late-anchor",
+        "side": "Up",
+        "entryPrice": 0.934,
+        "timeToResolutionAtEntry": 17,
+        "collapseType": "down-side",
+        "outcome": "win",
+        "pnl": 0.33
+      }
+    ],
+    "recentTrades": [],
     "totalTrades": 0,
     "totalPnl": 0,
     "byStrategy": {}
@@ -153,6 +166,16 @@ One strategy runs automatically in paper mode (no real money):
 - Reset button/API clears trades, open positions, and resets balance to initial
 
 Results appear in the dashboard Paper Trading section.
+
+### Segmented Diagnostics
+
+The dashboard includes bucketed expectancy diagnostics to find where edge actually comes from:
+
+- **By entry price**: `<0.80`, `0.80-0.90`, `0.90-0.95`, `0.95-1.00`
+- **By time to resolution**: `<10s`, `10-20s`, `20-40s`, `40s+`
+- **By collapse type**: `up-side` vs `down-side`
+
+Each bucket displays total PnL, trade count, win rate, and expectancy per trade.
 
 ## Disclaimer
 

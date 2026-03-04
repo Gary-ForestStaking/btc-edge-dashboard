@@ -1,4 +1,5 @@
 export type Side = 'Up' | 'Down';
+export type CollapseType = 'up-side' | 'down-side';
 
 export type StrategyMode = 'late-anchor';
 
@@ -27,6 +28,7 @@ export interface PaperPosition {
   edgeAtEntry: number;
   impliedUpAtEntry: number;
   priceAtWindowStartChainlink: number;  // for resolution
+  collapseType: CollapseType;
 }
 
 export interface PaperTrade {
@@ -40,6 +42,8 @@ export interface PaperTrade {
   pnl: number;
   resolvedAt: number;
   outcome: 'win' | 'loss';
+  timeToResolutionAtEntry: number;
+  collapseType: CollapseType;
 }
 
 export interface PaperTradingState {

@@ -537,6 +537,47 @@ main {
 .health-cell strong.positive { color: var(--up); }
 .health-cell strong.negative { color: var(--down); }
 
+.paper-segments {
+  margin: 0.7rem 0 0.25rem;
+}
+
+.paper-segment-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.7rem;
+}
+
+.paper-segment-title {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.paper-segment-table {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.paper-segment-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.35rem 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.paper-segment-row:last-child {
+  border-bottom: none;
+}
+
+.paper-segment-row strong {
+  font-weight: 600;
+}
+
 .paper-strategy-row {
   display: grid;
   grid-template-columns: 1fr auto auto;

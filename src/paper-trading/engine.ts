@@ -1,6 +1,6 @@
 import { feedEvents } from '../events.js';
 import { state, getEdgeAnalysis } from '../state.js';
-import type { StrategyConfig, PaperPosition, PaperTrade, Side } from './types.js';
+import type { CollapseType, StrategyConfig, PaperPosition, PaperTrade, Side } from './types.js';
 import { STRATEGIES } from './strategies.js';
 
 const INITIAL_BALANCE = 100;
@@ -50,7 +50,7 @@ function shouldEnter(
   bestAskUp: number,
   _spreadBps?: number,
   _polymarketSpreadBps?: number
-): { side: Side; price: number } | null {
+): { side: Side; price: number; collapseType: CollapseType } | null {
   if (bestBidUp < 0 || bestBidUp > 1 || bestAskUp < 0 || bestAskUp > 1) return null;
   if (bestAskUp < bestBidUp) return null;
   if (timeToResolution > LATE_ANCHOR_MAX_TTR_SEC || timeToResolution < LATE_ANCHOR_MIN_TTR_SEC) return null;
@@ -72,10 +72,10 @@ function shouldEnter(
   const upSideCollapsed = bestBidUp <= COLLAPSE_BID_THRESHOLD || askDown >= 0.96;
 
   if (downSideCollapsed && bidImpulseUp >= IMPULSE_MIN && askUp > 0 && askUp < LATE_ANCHOR_MAX_ASK) {
-    return { side: 'Up', price: askUp };
+    return { side: 'Up', price: askUp, collapseType: 'down-side' };
   }
   if (upSideCollapsed && bidImpulseDown >= IMPULSE_MIN && askDown > 0 && askDown < LATE_ANCHOR_MAX_ASK) {
-    return { side: 'Down', price: askDown };
+    return { side: 'Down', price: askDown, collapseType: 'up-side' };
   }
   return null;
 }
@@ -103,6 +103,8 @@ function resolvePosition(pos: PaperPosition, resolutionPrice: number, startPrice
     pnl,
     resolvedAt: Date.now(),
     outcome: won ? 'win' : 'loss',
+    timeToResolutionAtEntry: pos.timeToResolutionAtEntry,
+    collapseType: pos.collapseType,
   };
 
   trades.push(trade);
@@ -190,6 +192,7 @@ function runStrategies() {
         edgeAtEntry: edge,
         impliedUpAtEntry: impliedUpFromBinance,
         priceAtWindowStartChainlink: startChainlink,
+        collapseType: signal.collapseType,
       };
       positions.push(pos);
       console.log(`[Paper] ${config.name} ENTER ${signal.side} @ ${(filledPrice * 100).toFixed(1)}% edge=${(edge * 100).toFixed(1)}% ttr=${timeToResolution}s`);
@@ -283,7 +286,8 @@ export function getPaperTradingState() {
     initialBalance: INITIAL_BALANCE,
     lockedInPositions,
     positions: activePositions,
-    trades: activeTrades.slice(-50),
+    trades: activeTrades,
+    recentTrades: activeTrades.slice(-50),
     totalTrades: activeTrades.length,
     totalPnl,
     wins,

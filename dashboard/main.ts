@@ -13,6 +13,8 @@ interface ObPoint {
 
 const orderbookHistory: ObPoint[] = [];
 let lastOrderbookTs = 0;
+const renderCache: Record<string, string> = {};
+let lastTradesSignature = '';
 
 interface ApiState {
   binance: { lastPrice: number; lastUpdate: number; tradeCount: number };
@@ -59,7 +61,26 @@ interface ApiState {
       profitFactor: number;
     }>;
     positions: Array<{ strategyId: string; side: string; entryPrice: number; size: number; timeToResolutionAtEntry: number }>;
-    trades: Array<{ strategyId: string; side: string; outcome: string; pnl: number }>;
+    trades: Array<{
+      positionId: string;
+      strategyId: string;
+      side: string;
+      outcome: string;
+      pnl: number;
+      entryPrice: number;
+      timeToResolutionAtEntry: number;
+      collapseType: 'up-side' | 'down-side';
+    }>;
+    recentTrades?: Array<{
+      positionId: string;
+      strategyId: string;
+      side: string;
+      outcome: string;
+      pnl: number;
+      entryPrice: number;
+      timeToResolutionAtEntry: number;
+      collapseType: 'up-side' | 'down-side';
+    }>;
     totalTrades: number;
     totalPnl: number;
     wins: number;
@@ -131,7 +152,8 @@ function formatSpread(spread: number, bps?: number): string {
 function setBarWidth(el: HTMLElement | null, prob: number): void {
   if (!el || !Number.isFinite(prob)) return;
   const pct = Math.max(0, Math.min(100, prob * 100));
-  el.style.width = `${pct}%`;
+  const next = `${pct}%`;
+  if (el.style.width !== next) el.style.width = next;
 }
 
 function clamp01(n: number): number {
@@ -186,6 +208,27 @@ function formatMoney(n: number): string {
   return `${sign}$${n.toFixed(2)}`;
 }
 
+function setTextCached(key: string, el: HTMLElement | null, value: string): void {
+  if (!el) return;
+  if (renderCache[key] === value) return;
+  renderCache[key] = value;
+  el.textContent = value;
+}
+
+function setHtmlCached(key: string, el: HTMLElement | null, value: string): void {
+  if (!el) return;
+  if (renderCache[key] === value) return;
+  renderCache[key] = value;
+  el.innerHTML = value;
+}
+
+function setAttrCached(key: string, el: Element | null, attr: string, value: string): void {
+  if (!el) return;
+  if (renderCache[key] === value) return;
+  renderCache[key] = value;
+  el.setAttribute(attr, value);
+}
+
 function computeHealthMetrics(trades: Array<{ pnl: number; outcome: string }>) {
   if (!trades.length) return null;
 
@@ -225,6 +268,38 @@ function computeHealthMetrics(trades: Array<{ pnl: number; outcome: string }>) {
     sampleSize: trades.length,
     last50Count: last50.length,
   };
+}
+
+type SegmentTrade = {
+  pnl: number;
+  outcome: string;
+  entryPrice: number;
+  timeToResolutionAtEntry: number;
+  collapseType: 'up-side' | 'down-side';
+};
+
+function bucketBy<T extends string>(items: SegmentTrade[], fn: (t: SegmentTrade) => T): Record<T, SegmentTrade[]> {
+  return items.reduce((acc, item) => {
+    const k = fn(item);
+    if (!acc[k]) acc[k] = [];
+    acc[k].push(item);
+    return acc;
+  }, {} as Record<T, SegmentTrade[]>);
+}
+
+function summarizeSegment(rows: Record<string, SegmentTrade[]>): string {
+  const keys = Object.keys(rows);
+  if (!keys.length) return 'No trades yet';
+  const body = keys.map((k) => {
+    const arr = rows[k];
+    const pnl = arr.reduce((s, t) => s + t.pnl, 0);
+    const wins = arr.filter((t) => t.outcome === 'win').length;
+    const wr = arr.length ? (wins / arr.length) * 100 : 0;
+    const exp = arr.length ? pnl / arr.length : 0;
+    const pnlClass = pnl >= 0 ? 'positive' : 'negative';
+    return `<div class="paper-segment-row"><span>${k}</span><strong class="${pnlClass}">${formatMoney(pnl)}</strong><span>${arr.length}t · ${wr.toFixed(1)}% · exp ${formatMoney(exp)}</span></div>`;
+  }).join('');
+  return `<div class="paper-segment-table">${body}</div>`;
 }
 
 function render(state: ApiState | null) {
@@ -272,6 +347,9 @@ function render(state: ApiState | null) {
   const paperWinrate = document.getElementById('paper-winrate')!;
   const paperByStrategyList = document.getElementById('paper-by-strategy-list');
   const paperHealthGrid = document.getElementById('paper-health-grid');
+  const paperSegmentPrice = document.getElementById('paper-segment-price');
+  const paperSegmentTtr = document.getElementById('paper-segment-ttr');
+  const paperSegmentCollapse = document.getElementById('paper-segment-collapse');
   const paperPositionsList = document.getElementById('paper-positions-list')!;
   const paperTradesContent = document.getElementById('paper-trades-content')!;
 
@@ -284,27 +362,25 @@ function render(state: ApiState | null) {
   statusEl.textContent = 'Live';
   statusEl.classList.add('live');
 
-  binancePrice.textContent = formatPrice(state.binance.lastPrice);
-  chainlinkPrice.textContent = state.polymarketPrice
-    ? formatPrice(state.polymarketPrice.price)
-    : '—';
+  setTextCached('binancePrice', binancePrice, formatPrice(state.binance.lastPrice));
+  setTextCached('chainlinkPrice', chainlinkPrice, state.polymarketPrice ? formatPrice(state.polymarketPrice.price) : '—');
 
   if (state.edgeAnalysis?.binanceChainlinkSpread !== undefined) {
     const { binanceChainlinkSpread, binanceChainlinkSpreadBps } = state.edgeAnalysis;
-    spreadValue.textContent = formatSpread(binanceChainlinkSpread, binanceChainlinkSpreadBps);
+    setTextCached('spreadValue', spreadValue, formatSpread(binanceChainlinkSpread, binanceChainlinkSpreadBps));
     spreadRow.classList.toggle('positive', (binanceChainlinkSpread ?? 0) > 0);
     spreadRow.classList.toggle('negative', (binanceChainlinkSpread ?? 0) < 0);
   } else {
-    spreadValue.textContent = '—';
+    setTextCached('spreadValue', spreadValue, '—');
     spreadRow.classList.remove('positive', 'negative');
   }
 
   if (state.polymarket) {
     const pm = state.polymarket;
-    pmWindow.textContent = formatWindow(pm.windowStart) + ' – ' + formatWindow(pm.windowEnd);
-    pmUp.textContent = formatPct(pm.upPrice);
-    pmDown.textContent = formatPct(pm.downPrice);
-    pmMeta.textContent = pm.slug;
+    setTextCached('pmWindow', pmWindow, formatWindow(pm.windowStart) + ' – ' + formatWindow(pm.windowEnd));
+    setTextCached('pmUp', pmUp, formatPct(pm.upPrice));
+    setTextCached('pmDown', pmDown, formatPct(pm.downPrice));
+    setTextCached('pmMeta', pmMeta, pm.slug);
 
     const upBid = pm.bestBidUp;
     const upAsk = pm.bestAskUp;
@@ -323,13 +399,13 @@ function render(state: ApiState | null) {
           : 'Balanced';
     const imbalance = Math.max(-1, Math.min(1, upBid + upAsk - 1));
 
-    if (obUpBid) obUpBid.textContent = formatPct(upBid);
-    if (obUpAsk) obUpAsk.textContent = formatPct(upAsk);
-    if (obDownBid) obDownBid.textContent = formatPct(downBid);
-    if (obDownAsk) obDownAsk.textContent = formatPct(downAsk);
-    if (obSpreadBps) obSpreadBps.textContent = `${spreadBps.toFixed(1)} bps`;
-    if (obMid) obMid.textContent = formatPct(mid);
-    if (obRegime) obRegime.textContent = regime;
+    setTextCached('obUpBid', obUpBid, formatPct(upBid));
+    setTextCached('obUpAsk', obUpAsk, formatPct(upAsk));
+    setTextCached('obDownBid', obDownBid, formatPct(downBid));
+    setTextCached('obDownAsk', obDownAsk, formatPct(downAsk));
+    setTextCached('obSpreadBps', obSpreadBps, `${spreadBps.toFixed(1)} bps`);
+    setTextCached('obMid', obMid, formatPct(mid));
+    setTextCached('obRegime', obRegime, regime);
 
     setBarWidth(obUpBidBar, upBid);
     setBarWidth(obUpAskBar, upAsk);
@@ -338,8 +414,10 @@ function render(state: ApiState | null) {
 
     if (obImbalanceFill) {
       const widthPct = Math.abs(imbalance) * 100;
-      obImbalanceFill.style.width = `${widthPct / 2}%`;
-      obImbalanceFill.style.left = imbalance >= 0 ? '50%' : `${50 - (widthPct / 2)}%`;
+      const nextWidth = `${widthPct / 2}%`;
+      const nextLeft = imbalance >= 0 ? '50%' : `${50 - (widthPct / 2)}%`;
+      if (obImbalanceFill.style.width !== nextWidth) obImbalanceFill.style.width = nextWidth;
+      if (obImbalanceFill.style.left !== nextLeft) obImbalanceFill.style.left = nextLeft;
       obImbalanceFill.classList.toggle('negative', imbalance < 0);
     }
 
@@ -347,22 +425,22 @@ function render(state: ApiState | null) {
     if (obBidLine && obAskLine && obSpreadBand) {
       const width = 640;
       const height = 170;
-      obBidLine.setAttribute('d', linePath(orderbookHistory, width, height, 'bid'));
-      obAskLine.setAttribute('d', linePath(orderbookHistory, width, height, 'ask'));
-      obSpreadBand.setAttribute('d', spreadBandPath(orderbookHistory, width, height));
+      setAttrCached('obBidLineD', obBidLine, 'd', linePath(orderbookHistory, width, height, 'bid'));
+      setAttrCached('obAskLineD', obAskLine, 'd', linePath(orderbookHistory, width, height, 'ask'));
+      setAttrCached('obSpreadBandD', obSpreadBand, 'd', spreadBandPath(orderbookHistory, width, height));
     }
   } else {
-    pmWindow.textContent = '—';
-    pmUp.textContent = '—';
-    pmDown.textContent = '—';
-    pmMeta.textContent = 'Waiting for market...';
-    if (obUpBid) obUpBid.textContent = '—';
-    if (obUpAsk) obUpAsk.textContent = '—';
-    if (obDownBid) obDownBid.textContent = '—';
-    if (obDownAsk) obDownAsk.textContent = '—';
-    if (obSpreadBps) obSpreadBps.textContent = '—';
-    if (obMid) obMid.textContent = '—';
-    if (obRegime) obRegime.textContent = '—';
+    setTextCached('pmWindow', pmWindow, '—');
+    setTextCached('pmUp', pmUp, '—');
+    setTextCached('pmDown', pmDown, '—');
+    setTextCached('pmMeta', pmMeta, 'Waiting for market...');
+    setTextCached('obUpBid', obUpBid, '—');
+    setTextCached('obUpAsk', obUpAsk, '—');
+    setTextCached('obDownBid', obDownBid, '—');
+    setTextCached('obDownAsk', obDownAsk, '—');
+    setTextCached('obSpreadBps', obSpreadBps, '—');
+    setTextCached('obMid', obMid, '—');
+    setTextCached('obRegime', obRegime, '—');
     setBarWidth(obUpBidBar, 0);
     setBarWidth(obUpAskBar, 0);
     setBarWidth(obDownBidBar, 0);
@@ -372,9 +450,9 @@ function render(state: ApiState | null) {
       obImbalanceFill.style.left = '50%';
       obImbalanceFill.classList.remove('negative');
     }
-    if (obBidLine) obBidLine.setAttribute('d', '');
-    if (obAskLine) obAskLine.setAttribute('d', '');
-    if (obSpreadBand) obSpreadBand.setAttribute('d', '');
+    setAttrCached('obBidLineD', obBidLine, 'd', '');
+    setAttrCached('obAskLineD', obAskLine, 'd', '');
+    setAttrCached('obSpreadBandD', obSpreadBand, 'd', '');
     orderbookHistory.length = 0;
     lastOrderbookTs = 0;
   }
@@ -386,19 +464,19 @@ function render(state: ApiState | null) {
     const selectedImpliedUp = useVolModel ? ea.impliedUpVolAdj : (ea.oldLinearImpliedUp ?? ea.impliedUpFromBinance);
     const selectedEdge = useVolModel ? ea.edge : linearEdge;
 
-    priceToBeat.textContent = ea.priceAtWindowStartChainlink && ea.priceAtWindowStartChainlink > 0
+    setTextCached('priceToBeat', priceToBeat, ea.priceAtWindowStartChainlink && ea.priceAtWindowStartChainlink > 0
       ? formatPrice(ea.priceAtWindowStartChainlink)
-      : '—';
-    impliedUpBinance.textContent = formatPct(selectedImpliedUp);
-    impliedUpVol.textContent = formatPct(ea.impliedUpVolAdj);
-    impliedUpLinear.textContent = formatPct(ea.oldLinearImpliedUp ?? ea.impliedUpFromBinance);
-    realizedVolEl.textContent = formatVol(ea.realizedVol);
-    tauYearsEl.textContent = formatTau(ea.tau);
-    impliedUpChainlink.textContent = formatPct(ea.impliedUpFromChainlink);
+      : '—');
+    setTextCached('impliedUpBinance', impliedUpBinance, formatPct(selectedImpliedUp));
+    setTextCached('impliedUpVol', impliedUpVol, formatPct(ea.impliedUpVolAdj));
+    setTextCached('impliedUpLinear', impliedUpLinear, formatPct(ea.oldLinearImpliedUp ?? ea.impliedUpFromBinance));
+    setTextCached('realizedVol', realizedVolEl, formatVol(ea.realizedVol));
+    setTextCached('tauYears', tauYearsEl, formatTau(ea.tau));
+    setTextCached('impliedUpChainlink', impliedUpChainlink, formatPct(ea.impliedUpFromChainlink));
     if (polymarketAskEl) {
-      polymarketAskEl.textContent = formatPct(ea.polymarketAskUp ?? ea.polymarketUp);
+      setTextCached('polymarketAsk', polymarketAskEl, formatPct(ea.polymarketAskUp ?? ea.polymarketUp));
     }
-    edgeValue.textContent = (selectedEdge >= 0 ? '+' : '') + formatPct(selectedEdge);
+    setTextCached('edgeValue', edgeValue, (selectedEdge >= 0 ? '+' : '') + formatPct(selectedEdge));
     if (edgeLabel) {
       edgeLabel.textContent = useVolModel
         ? 'Edge (Vol-Adjusted implied − Up ask)'
@@ -408,46 +486,44 @@ function render(state: ApiState | null) {
       edgeValue.textContent += ' ⚠ wide spread';
     }
     if (edgeChainlinkEl && ea.edgeFromChainlink !== undefined) {
-      edgeChainlinkEl.textContent = (ea.edgeFromChainlink >= 0 ? '+' : '') + formatPct(ea.edgeFromChainlink);
+      setTextCached('edgeChainlink', edgeChainlinkEl, (ea.edgeFromChainlink >= 0 ? '+' : '') + formatPct(ea.edgeFromChainlink));
     }
     edgeWrap.classList.toggle('positive', selectedEdge > 0.01);
     edgeWrap.classList.toggle('negative', selectedEdge < -0.01);
-    timeToRes.textContent = formatTime(ea.timeToResolution);
+    setTextCached('timeToRes', timeToRes, formatTime(ea.timeToResolution));
     const pmMidEl = document.getElementById('polymarket-up');
-    if (pmMidEl) pmMidEl.textContent = 'Polymarket mid: ' + formatPct(ea.polymarketUp);
+    if (pmMidEl) setTextCached('pmMid', pmMidEl, 'Polymarket mid: ' + formatPct(ea.polymarketUp));
   } else {
-    priceToBeat.textContent = '—';
-    impliedUpBinance.textContent = '—';
-    impliedUpVol.textContent = '—';
-    impliedUpLinear.textContent = '—';
-    realizedVolEl.textContent = '—';
-    tauYearsEl.textContent = '—';
-    impliedUpChainlink.textContent = '—';
+    setTextCached('priceToBeat', priceToBeat, '—');
+    setTextCached('impliedUpBinance', impliedUpBinance, '—');
+    setTextCached('impliedUpVol', impliedUpVol, '—');
+    setTextCached('impliedUpLinear', impliedUpLinear, '—');
+    setTextCached('realizedVol', realizedVolEl, '—');
+    setTextCached('tauYears', tauYearsEl, '—');
+    setTextCached('impliedUpChainlink', impliedUpChainlink, '—');
     const pmMidEl = document.getElementById('polymarket-up');
-    if (pmMidEl) pmMidEl.textContent = 'Polymarket mid: —';
-    edgeValue.textContent = '—';
-    if (edgeChainlinkEl) edgeChainlinkEl.textContent = '—';
+    if (pmMidEl) setTextCached('pmMid', pmMidEl, 'Polymarket mid: —');
+    setTextCached('edgeValue', edgeValue, '—');
+    if (edgeChainlinkEl) setTextCached('edgeChainlink', edgeChainlinkEl, '—');
     edgeWrap.classList.remove('positive', 'negative');
-    timeToRes.textContent = '—';
-    const pmMidEl2 = document.getElementById('polymarket-up');
-    if (pmMidEl2) pmMidEl2.textContent = 'Polymarket mid: —';
+    setTextCached('timeToRes', timeToRes, '—');
   }
 
   if (state.paperTrading) {
     const pt = state.paperTrading;
     const bal = pt.balance;
     const initial = pt.initialBalance ?? 100;
-    paperBalance.textContent = typeof bal === 'number' ? `$${bal.toFixed(2)}` : '—';
+    setTextCached('paperBalance', paperBalance, typeof bal === 'number' ? `$${bal.toFixed(2)}` : '—');
     paperBalance.className = 'paper-stat-value ' + (typeof bal === 'number' && bal >= initial ? 'positive' : 'negative');
-    paperPnl.textContent = `$${pt.totalPnl.toFixed(2)}`;
+    setTextCached('paperPnl', paperPnl, `$${pt.totalPnl.toFixed(2)}`);
     paperPnl.className = 'paper-stat-value ' + (pt.totalPnl >= 0 ? 'positive' : 'negative');
-    paperTrades.textContent = `${pt.totalTrades} (${pt.wins}W / ${pt.losses}L)`;
-    paperWinrate.textContent = pt.totalTrades > 0 ? `${pt.winRate.toFixed(1)}%` : '—';
+    setTextCached('paperTrades', paperTrades, `${pt.totalTrades} (${pt.wins}W / ${pt.losses}L)`);
+    setTextCached('paperWinrate', paperWinrate, pt.totalTrades > 0 ? `${pt.winRate.toFixed(1)}%` : '—');
 
     if (paperByStrategyList && pt.byStrategy && Object.keys(pt.byStrategy).length > 0) {
       const sorted = Object.entries(pt.byStrategy)
         .sort(([, a], [, b]) => b.pnl - a.pnl);
-      paperByStrategyList.innerHTML = sorted
+      setHtmlCached('paperByStrategyList', paperByStrategyList, sorted
         .map(([, s]) => {
           const total = s.wins + s.losses;
           const wr = total > 0 ? ((s.wins / total) * 100).toFixed(1) : '—';
@@ -455,21 +531,23 @@ function render(state: ApiState | null) {
           const pf = Number.isFinite(s.profitFactor) ? s.profitFactor.toFixed(2) : 'inf';
           return `<div class="paper-strategy-row"><span>${s.name}</span><span class="${pnlClass}">$${s.pnl.toFixed(2)}</span><span>${s.wins}W/${s.losses}L (${wr}%) PF:${pf}</span></div>`;
         })
-        .join('');
+        .join(''));
     } else if (paperByStrategyList) {
-      paperByStrategyList.textContent = 'No trades yet';
+      setTextCached('paperByStrategyList', paperByStrategyList, 'No trades yet');
     }
 
-    paperPositionsList.textContent = pt.positions.length
+    setTextCached('paperPositionsList', paperPositionsList, pt.positions.length
       ? pt.positions.map((p) => `${p.strategyId} ${p.side} @ ${(p.entryPrice * 100).toFixed(1)}% (${p.timeToResolutionAtEntry}s left)`).join('\n')
-      : 'None';
+      : 'None');
 
-    const visibleTrades = pt.trades ?? [];
-    const health = computeHealthMetrics(visibleTrades);
+    const allTrades = pt.trades ?? [];
+    const visibleTrades = pt.recentTrades ?? allTrades.slice(-50);
+    const tradesSignature = allTrades.map((t) => `${t.positionId}:${t.outcome}:${t.pnl.toFixed(4)}`).join('|');
+    const health = computeHealthMetrics(allTrades);
     if (paperHealthGrid) {
       if (health) {
         const ratioText = health.winLossRatio !== null ? health.winLossRatio.toFixed(2) : '—';
-        paperHealthGrid.innerHTML = [
+        setHtmlCached('paperHealthGrid', paperHealthGrid, [
           `<div class="health-cell"><span>Expectancy / trade</span><strong class="${health.expectancy >= 0 ? 'positive' : 'negative'}">${formatMoney(health.expectancy)}</strong></div>`,
           `<div class="health-cell"><span>Avg win</span><strong class="positive">${formatMoney(health.avgWin)}</strong></div>`,
           `<div class="health-cell"><span>Avg loss (abs)</span><strong class="negative">$${health.avgLossMag.toFixed(2)}</strong></div>`,
@@ -478,30 +556,57 @@ function render(state: ApiState | null) {
           `<div class="health-cell"><span>Rolling 50 PnL</span><strong class="${health.last50Pnl >= 0 ? 'positive' : 'negative'}">${formatMoney(health.last50Pnl)}</strong></div>`,
           `<div class="health-cell"><span>Rolling 50 win rate</span><strong>${health.last50WinRate.toFixed(1)}% (${health.last50Count})</strong></div>`,
           `<div class="health-cell"><span>Sample size</span><strong>${health.sampleSize}</strong></div>`,
-        ].join('');
+        ].join(''));
       } else {
-        paperHealthGrid.textContent = 'No trades yet';
+        setTextCached('paperHealthGrid', paperHealthGrid, 'No trades yet');
       }
     }
 
-    const strategyNames: Record<string, string> = {};
-    if (pt.byStrategy) {
-      for (const [id, s] of Object.entries(pt.byStrategy)) strategyNames[id] = s.name;
+    if (tradesSignature !== lastTradesSignature) {
+      lastTradesSignature = tradesSignature;
+      const priceBuckets = bucketBy(allTrades as SegmentTrade[], (t) => {
+        if (t.entryPrice < 0.8) return '<0.80';
+        if (t.entryPrice < 0.9) return '0.80-0.90';
+        if (t.entryPrice < 0.95) return '0.90-0.95';
+        return '0.95-1.00';
+      });
+      const ttrBuckets = bucketBy(allTrades as SegmentTrade[], (t) => {
+        const s = t.timeToResolutionAtEntry ?? 0;
+        if (s < 10) return '<10s';
+        if (s < 20) return '10-20s';
+        if (s < 40) return '20-40s';
+        return '40s+';
+      });
+      const collapseBuckets = bucketBy(allTrades as SegmentTrade[], (t) => t.collapseType);
+
+      setHtmlCached('paperSegmentPrice', paperSegmentPrice, summarizeSegment(priceBuckets));
+      setHtmlCached('paperSegmentTtr', paperSegmentTtr, summarizeSegment(ttrBuckets));
+      setHtmlCached('paperSegmentCollapse', paperSegmentCollapse, summarizeSegment(collapseBuckets));
+
+      const strategyNames: Record<string, string> = {};
+      if (pt.byStrategy) {
+        for (const [id, s] of Object.entries(pt.byStrategy)) strategyNames[id] = s.name;
+      }
+      setHtmlCached('paperTradesContent', paperTradesContent, visibleTrades.length
+        ? visibleTrades.slice().reverse().map((t) =>
+            `<div class="paper-trade-row ${t.outcome}"><span>${strategyNames[t.strategyId] ?? t.strategyId} ${t.side} ${t.outcome}</span><span>$${t.pnl.toFixed(2)}</span></div>`
+          ).join('')
+        : 'None yet');
     }
-    paperTradesContent.innerHTML = visibleTrades.length
-      ? visibleTrades.slice().reverse().map((t) =>
-          `<div class="paper-trade-row ${t.outcome}"><span>${strategyNames[t.strategyId] ?? t.strategyId} ${t.side} ${t.outcome}</span><span>$${t.pnl.toFixed(2)}</span></div>`
-        ).join('')
-      : 'None yet';
+
   } else {
-    paperBalance.textContent = '—';
-    paperPnl.textContent = '—';
-    paperTrades.textContent = '—';
-    paperWinrate.textContent = '—';
-    if (paperByStrategyList) paperByStrategyList.textContent = '—';
-    if (paperHealthGrid) paperHealthGrid.textContent = '—';
-    paperPositionsList.textContent = '—';
-    paperTradesContent.textContent = '—';
+    setTextCached('paperBalance', paperBalance, '—');
+    setTextCached('paperPnl', paperPnl, '—');
+    setTextCached('paperTrades', paperTrades, '—');
+    setTextCached('paperWinrate', paperWinrate, '—');
+    if (paperByStrategyList) setTextCached('paperByStrategyList', paperByStrategyList, '—');
+    if (paperHealthGrid) setTextCached('paperHealthGrid', paperHealthGrid, '—');
+    if (paperSegmentPrice) setTextCached('paperSegmentPrice', paperSegmentPrice, '—');
+    if (paperSegmentTtr) setTextCached('paperSegmentTtr', paperSegmentTtr, '—');
+    if (paperSegmentCollapse) setTextCached('paperSegmentCollapse', paperSegmentCollapse, '—');
+    setTextCached('paperPositionsList', paperPositionsList, '—');
+    setTextCached('paperTradesContent', paperTradesContent, '—');
+    lastTradesSignature = '';
   }
 }
 
