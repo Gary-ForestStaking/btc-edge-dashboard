@@ -54,6 +54,33 @@
           <div class="meta" id="pm-meta">—</div>
         </section>
 
+        <section class="card orderbook-card">
+          <h2>Order Book Visual</h2>
+          <div class="ob-grid">
+            <div class="ob-row">
+              <span class="ob-label">Up Bid</span>
+              <div class="ob-bar"><div id="ob-up-bid-bar" class="ob-fill bid up"></div></div>
+              <span id="ob-up-bid" class="ob-value">—</span>
+            </div>
+            <div class="ob-row">
+              <span class="ob-label">Up Ask</span>
+              <div class="ob-bar"><div id="ob-up-ask-bar" class="ob-fill ask up"></div></div>
+              <span id="ob-up-ask" class="ob-value">—</span>
+            </div>
+            <div class="ob-row">
+              <span class="ob-label">Down Bid</span>
+              <div class="ob-bar"><div id="ob-down-bid-bar" class="ob-fill bid down"></div></div>
+              <span id="ob-down-bid" class="ob-value">—</span>
+            </div>
+            <div class="ob-row">
+              <span class="ob-label">Down Ask</span>
+              <div class="ob-bar"><div id="ob-down-ask-bar" class="ob-fill ask down"></div></div>
+              <span id="ob-down-ask" class="ob-value">—</span>
+            </div>
+          </div>
+          <p class="edge-hint">Bars show top-of-book price levels (0-100%) for both sides.</p>
+        </section>
+
         <section class="card edge-card">
           <h2>Edge Analysis</h2>
           <div class="edge-section">
@@ -117,12 +144,12 @@
             <span class="edge-meta-sep">·</span>
             <span id="polymarket-up">Polymarket mid: —</span>
           </div>
-          <p class="edge-hint">Spread confirms: Binance &gt; Chainlink = lean Up. Early Edge = Binance leads, Chainlink near start. Agreement = both imply same direction.</p>
+          <p class="edge-hint">Late Anchor: late-window orderbook-collapse entries only.</p>
         </section>
 
         <section class="card paper-card">
           <h2>Paper Trading</h2>
-          <p class="label">4 strategies ($5 each): Early Edge, Agreement, No-Trade Zone, Window Phase. Strict quality filters + persistence + slippage-aware fills enabled.</p>
+          <p class="label">Single strategy: Late Anchor, ~$5 per trade.</p>
           <div class="paper-stats">
             <div class="paper-stat">
               <span class="paper-stat-label">Balance</span>

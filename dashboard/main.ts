@@ -11,6 +11,8 @@ interface ApiState {
     windowEnd: number;
     upPrice: number;
     downPrice: number;
+    bestBidUp: number;
+    bestAskUp: number;
     lastUpdate: number;
   } | null;
   edgeAnalysis: {
@@ -114,6 +116,12 @@ function formatSpread(spread: number, bps?: number): string {
   return `${sign}$${spread.toFixed(2)}${bpsStr}`;
 }
 
+function setBarWidth(el: HTMLElement | null, prob: number): void {
+  if (!el || !Number.isFinite(prob)) return;
+  const pct = Math.max(0, Math.min(100, prob * 100));
+  el.style.width = `${pct}%`;
+}
+
 function render(state: ApiState | null) {
   const statusEl = document.getElementById('status')!;
   const binancePrice = document.getElementById('binance-price')!;
@@ -124,6 +132,14 @@ function render(state: ApiState | null) {
   const pmUp = document.getElementById('pm-up')!;
   const pmDown = document.getElementById('pm-down')!;
   const pmMeta = document.getElementById('pm-meta')!;
+  const obUpBid = document.getElementById('ob-up-bid');
+  const obUpAsk = document.getElementById('ob-up-ask');
+  const obDownBid = document.getElementById('ob-down-bid');
+  const obDownAsk = document.getElementById('ob-down-ask');
+  const obUpBidBar = document.getElementById('ob-up-bid-bar') as HTMLElement | null;
+  const obUpAskBar = document.getElementById('ob-up-ask-bar') as HTMLElement | null;
+  const obDownBidBar = document.getElementById('ob-down-bid-bar') as HTMLElement | null;
+  const obDownAskBar = document.getElementById('ob-down-ask-bar') as HTMLElement | null;
   const priceToBeat = document.getElementById('price-to-beat')!;
   const impliedUpBinance = document.getElementById('implied-up-binance')!;
   const impliedUpVol = document.getElementById('implied-up-vol')!;
@@ -176,11 +192,32 @@ function render(state: ApiState | null) {
     pmUp.textContent = formatPct(pm.upPrice);
     pmDown.textContent = formatPct(pm.downPrice);
     pmMeta.textContent = pm.slug;
+
+    const upBid = pm.bestBidUp;
+    const upAsk = pm.bestAskUp;
+    const downBid = 1 - upAsk;
+    const downAsk = 1 - upBid;
+    if (obUpBid) obUpBid.textContent = formatPct(upBid);
+    if (obUpAsk) obUpAsk.textContent = formatPct(upAsk);
+    if (obDownBid) obDownBid.textContent = formatPct(downBid);
+    if (obDownAsk) obDownAsk.textContent = formatPct(downAsk);
+    setBarWidth(obUpBidBar, upBid);
+    setBarWidth(obUpAskBar, upAsk);
+    setBarWidth(obDownBidBar, downBid);
+    setBarWidth(obDownAskBar, downAsk);
   } else {
     pmWindow.textContent = '—';
     pmUp.textContent = '—';
     pmDown.textContent = '—';
     pmMeta.textContent = 'Waiting for market...';
+    if (obUpBid) obUpBid.textContent = '—';
+    if (obUpAsk) obUpAsk.textContent = '—';
+    if (obDownBid) obDownBid.textContent = '—';
+    if (obDownAsk) obDownAsk.textContent = '—';
+    setBarWidth(obUpBidBar, 0);
+    setBarWidth(obUpAskBar, 0);
+    setBarWidth(obDownBidBar, 0);
+    setBarWidth(obDownAskBar, 0);
   }
 
   if (state.edgeAnalysis) {

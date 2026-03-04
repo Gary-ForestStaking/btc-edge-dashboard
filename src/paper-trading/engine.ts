@@ -12,6 +12,7 @@ let lastWindowSlug = '';
 let positionIdCounter = 0;
 let blockedWindowSlug: string | null = null;
 let pendingSignals: Record<string, { side: Side; firstSeenMs: number; lastSeenMs: number }> = {};
+let orderbookHistory: Array<{ ts: number; slug: string; bidUp: number; askUp: number }> = [];
 
 function resetState() {
   balance = INITIAL_BALANCE;
@@ -20,105 +21,63 @@ function resetState() {
   positionIdCounter = 0;
   blockedWindowSlug = state.polymarket?.slug ?? null;
   pendingSignals = {};
+  orderbookHistory = [];
 }
 
 function genId(): string {
   return `pos_${++positionIdCounter}_${Date.now()}`;
 }
 
-const AGREEMENT_THRESHOLD = 0.52;
-const EARLY_EDGE_CHAINLINK_NEUTRAL = 0.08;
-const NO_TRADE_ZONE_ASK_FLOOR = 0.05;
-const NO_TRADE_ZONE_ASK_CEIL = 0.95;
-const NO_TRADE_ZONE_MAX_PM_SPREAD_BPS = 800;
-const GLOBAL_MIN_TIME_TO_RESOLUTION = 60;
-const GLOBAL_MIN_ABS_SPREAD_BPS = 8;
-const GLOBAL_MAX_PM_SPREAD_BPS = 600;
-const MIN_SIGNAL_PERSIST_MS = 2500;
-const QUALITY_MIN_SCORE = 0.10;
+const MIN_SIGNAL_PERSIST_MS = 1500;
+const LATE_ANCHOR_MAX_TTR_SEC = 60;
+const LATE_ANCHOR_MIN_TTR_SEC = 3;
+const LATE_ANCHOR_MAX_ASK = 0.95;
+const COLLAPSE_BID_THRESHOLD = 0.08;
+const IMPULSE_MIN = 0.05;
+const MAX_SPREAD_BPS = 1200;
 
 function shouldEnter(
-  config: StrategyConfig,
-  edge: number,
-  impliedUpBinance: number,
-  impliedUpChainlink: number,
-  polymarketAskUp: number,
+  _config: StrategyConfig,
+  _edge: number,
+  _impliedUpBinance: number,
+  _impliedUpChainlink: number,
+  _polymarketAskUp: number,
   timeToResolution: number,
-  spreadBps?: number,
-  polymarketSpreadBps?: number
+  _currentBinancePrice: number,
+  _startBinancePrice: number,
+  windowSlug: string,
+  bestBidUp: number,
+  bestAskUp: number,
+  _spreadBps?: number,
+  _polymarketSpreadBps?: number
 ): { side: Side; price: number } | null {
-  const mode = config.mode ?? 'default';
+  if (bestBidUp < 0 || bestBidUp > 1 || bestAskUp < 0 || bestAskUp > 1) return null;
+  if (bestAskUp < bestBidUp) return null;
+  if (timeToResolution > LATE_ANCHOR_MAX_TTR_SEC || timeToResolution < LATE_ANCHOR_MIN_TTR_SEC) return null;
 
-  if (Math.abs(edge) < config.minEdge) return null;
-  if (timeToResolution > config.maxTimeToResolution) return null;
-  if (config.minTimeToResolution && timeToResolution < config.minTimeToResolution) return null;
-  if (timeToResolution < GLOBAL_MIN_TIME_TO_RESOLUTION) return null;
+  const askUp = bestAskUp;
+  const askDown = 1 - bestBidUp;
+  const bidDown = 1 - bestAskUp;
+  const spreadBps = (bestAskUp - bestBidUp) * 10000;
+  if (spreadBps > MAX_SPREAD_BPS) return null;
 
-  if (spreadBps === undefined || Math.abs(spreadBps) < GLOBAL_MIN_ABS_SPREAD_BPS) return null;
-  if (polymarketSpreadBps === undefined || polymarketSpreadBps > GLOBAL_MAX_PM_SPREAD_BPS) return null;
-  if (polymarketAskUp <= NO_TRADE_ZONE_ASK_FLOOR || polymarketAskUp >= NO_TRADE_ZONE_ASK_CEIL) return null;
+  const now = Date.now();
+  const recent = orderbookHistory.filter((h) => h.slug === windowSlug && now - h.ts <= 8000);
+  const minBidUp = recent.length > 0 ? Math.min(...recent.map((h) => h.bidUp)) : bestBidUp;
+  const maxBidUp = recent.length > 0 ? Math.max(...recent.map((h) => h.bidUp)) : bestBidUp;
+  const bidImpulseUp = bestBidUp - minBidUp;
+  const bidImpulseDown = maxBidUp - bestBidUp;
 
-  const spreadSignal = Math.max(-1, Math.min(1, spreadBps / 100));
-  const binanceSignal = impliedUpBinance - 0.5;
-  const chainlinkSignal = impliedUpChainlink - 0.5;
-  const qualityScore = Math.abs((binanceSignal * 0.45) + (chainlinkSignal * 0.35) + (spreadSignal * 0.20));
-  if (qualityScore < QUALITY_MIN_SCORE) return null;
+  const downSideCollapsed = bidDown <= COLLAPSE_BID_THRESHOLD || bestAskUp >= 0.96;
+  const upSideCollapsed = bestBidUp <= COLLAPSE_BID_THRESHOLD || askDown >= 0.96;
 
-  if (mode === 'early-edge') {
-    if (spreadBps === undefined) return null;
-    const chainlinkNearStart = Math.abs(impliedUpChainlink - 0.5) < EARLY_EDGE_CHAINLINK_NEUTRAL;
-    if (!chainlinkNearStart) return null;
-    if (edge > 0 && spreadBps <= 0) return null;
-    if (edge < 0 && spreadBps >= 0) return null;
-  } else if (mode === 'agreement') {
-    const bothUp = impliedUpBinance > AGREEMENT_THRESHOLD && impliedUpChainlink > AGREEMENT_THRESHOLD;
-    const bothDown = impliedUpBinance < (1 - AGREEMENT_THRESHOLD) && impliedUpChainlink < (1 - AGREEMENT_THRESHOLD);
-    if (!bothUp && !bothDown) return null;
-    if (config.requireSpreadConfirm && spreadBps !== undefined) {
-      if (edge > 0 && spreadBps < 0) return null;
-      if (edge < 0 && spreadBps > 0) return null;
-    }
-  } else if (mode === 'no-trade-zone') {
-    if (polymarketAskUp <= NO_TRADE_ZONE_ASK_FLOOR || polymarketAskUp >= NO_TRADE_ZONE_ASK_CEIL) return null;
-    if (polymarketSpreadBps === undefined || polymarketSpreadBps > NO_TRADE_ZONE_MAX_PM_SPREAD_BPS) return null;
-    if (config.requireSpreadConfirm) {
-      if (spreadBps === undefined) return null;
-      if (edge > 0 && spreadBps < 0) return null;
-      if (edge < 0 && spreadBps > 0) return null;
-    }
-  } else if (mode === 'window-phase') {
-    // Last minute is typically too noisy/illiquid for this setup.
-    if (timeToResolution < 60) return null;
-    // Earlier in the window we require stronger signal.
-    const dynamicMinEdge = timeToResolution > 180 ? 0.09 : 0.06;
-    if (Math.abs(edge) < dynamicMinEdge) return null;
-    if (config.requireSpreadConfirm) {
-      if (spreadBps === undefined) return null;
-      if (edge > 0 && spreadBps < 0) return null;
-      if (edge < 0 && spreadBps > 0) return null;
-    }
-  } else if (config.requireSpreadConfirm) {
-    if (spreadBps === undefined) return null;
-    if (edge > 0 && spreadBps < 0) return null;
-    if (edge < 0 && spreadBps > 0) return null;
+  if (downSideCollapsed && bidImpulseUp >= IMPULSE_MIN && askUp > 0 && askUp < LATE_ANCHOR_MAX_ASK) {
+    return { side: 'Up', price: askUp };
   }
-
-  if (config.maxSpreadBps !== undefined && spreadBps !== undefined) {
-    if (Math.abs(spreadBps) > config.maxSpreadBps) return null;
-  }
-
-  const pm = state.polymarket;
-  if (!pm) return null;
-
-  if (edge > 0) {
-    const price = pm.bestAskUp > 0 && pm.bestAskUp < 1 ? pm.bestAskUp : pm.upPrice;
-    if (price <= 0 || price >= 1) return null;
-    return { side: 'Up', price };
-  } else {
-    const askDown = pm.bestBidUp >= 0 && pm.bestBidUp <= 1 ? 1 - pm.bestBidUp : pm.downPrice;
-    if (askDown <= 0 || askDown >= 1) return null;
+  if (upSideCollapsed && bidImpulseDown >= IMPULSE_MIN && askDown > 0 && askDown < LATE_ANCHOR_MAX_ASK) {
     return { side: 'Down', price: askDown };
   }
+  return null;
 }
 
 function applyEntrySlippage(entryPrice: number, polymarketSpreadBps?: number): number {
@@ -159,11 +118,19 @@ function runStrategies() {
     impliedUpFromBinance,
     impliedUpFromChainlink,
     polymarketAskUp,
+    priceAtWindowStartBinance,
     polymarketSpreadBps,
     timeToResolution,
     binanceChainlinkSpreadBps,
   } = ea;
   const pm = state.polymarket;
+  orderbookHistory.push({
+    ts: Date.now(),
+    slug: pm.slug,
+    bidUp: pm.bestBidUp,
+    askUp: pm.bestAskUp,
+  });
+  orderbookHistory = orderbookHistory.filter((h) => h.slug === pm.slug ? (Date.now() - h.ts) <= 15000 : false);
 
   const startChainlink = ea.priceAtWindowStartChainlink ?? 0;
   if (startChainlink <= 0) return;
@@ -181,6 +148,11 @@ function runStrategies() {
       impliedUpFromChainlink,
       polymarketAskUp,
       timeToResolution,
+      state.binance.lastPrice,
+      priceAtWindowStartBinance ?? 0,
+      pm.slug,
+      pm.bestBidUp,
+      pm.bestAskUp,
       binanceChainlinkSpreadBps,
       polymarketSpreadBps
     );
@@ -238,6 +210,7 @@ function resolveWindow(prevSlug: string, resolutionPrice: number) {
   for (const key of Object.keys(pendingSignals)) {
     if (key.endsWith(`:${prevSlug}`)) delete pendingSignals[key];
   }
+  orderbookHistory = orderbookHistory.filter((h) => h.slug !== prevSlug);
 }
 
 function initListeners() {

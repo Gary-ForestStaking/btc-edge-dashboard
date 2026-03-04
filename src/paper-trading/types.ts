@@ -1,11 +1,6 @@
 export type Side = 'Up' | 'Down';
 
-export type StrategyMode =
-  | 'default'
-  | 'early-edge'
-  | 'agreement'
-  | 'no-trade-zone'
-  | 'window-phase';
+export type StrategyMode = 'late-anchor';
 
 export interface StrategyConfig {
   id: string;
