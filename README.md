@@ -15,9 +15,10 @@ Polymarket's 5-minute BTC Up/Down markets resolve using **Chainlink BTC/USD**. T
 - **Dual price feeds**: Binance Futures (BTC/USDT) + Polymarket/Chainlink (BTC/USD)
 - **Spread tracking**: Dollar and basis-point difference between feeds
 - **5-minute market odds**: Live Up/Down probabilities from Polymarket
+- **Order book visual**: Live top-of-book bars for Up/Down bid/ask levels
 - **Edge analysis**: Volatility-adjusted Binance probability vs Polymarket tradeable ask
 - **Model toggle**: Vol-adjusted vs legacy linear implied model on dashboard
-- **Paper trading**: Five strategy variants with per-strategy PnL
+- **Paper trading**: Single Late Anchor strategy with per-strategy stats
 - **Event-driven architecture**: WebSockets throughout, no polling
 
 ## Architecture
@@ -139,18 +140,15 @@ Returns current state:
 
 ## Paper Trading
 
-Five strategies run automatically in paper mode (no real money):
+One strategy runs automatically in paper mode (no real money):
 
 | Strategy | Mode | Key Gate | Size |
 |----------|------|----------|------|
-| Early Edge | `early-edge` | Chainlink near 50%, spread direction confirm | ~$5/trade |
-| Agreement | `agreement` | Binance + Chainlink agree on direction | ~$5/trade |
-| No-Trade Zone | `no-trade-zone` | Skip extreme asks / wide PM spread | ~$5/trade |
-| Window Phase | `window-phase` | Dynamic threshold by time-to-resolution | ~$5/trade |
-| Consensus Score | `consensus` | Weighted score (Binance, Chainlink, spread) | ~$5/trade |
+| Late Anchor | `late-anchor` | Late-window + one-side orderbook collapse + ask cap | ~$5/trade |
 
-- **TTR** = time to resolution (seconds)
-- **Spread confirm**: Binance-Chainlink spread must agree with edge direction
+- **Orderbook-driven entry**: Collapse and impulse checks use Polymarket top-of-book structure
+- **Late-window gating**: Only enters in the final seconds of each 5-minute window
+- **Ask cap filter**: Only buys when the chosen side is still below the configured max ask
 - Each strategy takes at most one position per 5-min window
 - Reset button/API clears trades, open positions, and resets balance to initial
 
