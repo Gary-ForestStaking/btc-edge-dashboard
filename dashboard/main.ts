@@ -35,7 +35,15 @@ interface ApiState {
     balance: number;
     initialBalance: number;
     lockedInPositions: number;
-    byStrategy?: Record<string, { name: string; pnl: number; wins: number; losses: number }>;
+    byStrategy?: Record<string, {
+      name: string;
+      pnl: number;
+      wins: number;
+      losses: number;
+      avgWin: number;
+      avgLoss: number;
+      profitFactor: number;
+    }>;
     positions: Array<{ strategyId: string; side: string; entryPrice: number; size: number; timeToResolutionAtEntry: number }>;
     trades: Array<{ strategyId: string; side: string; outcome: string; pnl: number }>;
     totalTrades: number;
@@ -248,7 +256,8 @@ function render(state: ApiState | null) {
           const total = s.wins + s.losses;
           const wr = total > 0 ? ((s.wins / total) * 100).toFixed(1) : '—';
           const pnlClass = s.pnl >= 0 ? 'positive' : 'negative';
-          return `<div class="paper-strategy-row"><span>${s.name}</span><span class="${pnlClass}">$${s.pnl.toFixed(2)}</span><span>${s.wins}W/${s.losses}L (${wr}%)</span></div>`;
+          const pf = Number.isFinite(s.profitFactor) ? s.profitFactor.toFixed(2) : 'inf';
+          return `<div class="paper-strategy-row"><span>${s.name}</span><span class="${pnlClass}">$${s.pnl.toFixed(2)}</span><span>${s.wins}W/${s.losses}L (${wr}%) PF:${pf}</span></div>`;
         })
         .join('');
     } else if (paperByStrategyList) {

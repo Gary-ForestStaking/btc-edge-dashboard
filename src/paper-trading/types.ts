@@ -5,8 +5,7 @@ export type StrategyMode =
   | 'early-edge'
   | 'agreement'
   | 'no-trade-zone'
-  | 'window-phase'
-  | 'consensus';
+  | 'window-phase';
 
 export interface StrategyConfig {
   id: string;

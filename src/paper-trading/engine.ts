@@ -11,6 +11,7 @@ let trades: PaperTrade[] = [];
 let lastWindowSlug = '';
 let positionIdCounter = 0;
 let blockedWindowSlug: string | null = null;
+let pendingSignals: Record<string, { side: Side; firstSeenMs: number; lastSeenMs: number }> = {};
 
 function resetState() {
   balance = INITIAL_BALANCE;
@@ -18,6 +19,7 @@ function resetState() {
   trades = [];
   positionIdCounter = 0;
   blockedWindowSlug = state.polymarket?.slug ?? null;
+  pendingSignals = {};
 }
 
 function genId(): string {
@@ -29,7 +31,11 @@ const EARLY_EDGE_CHAINLINK_NEUTRAL = 0.08;
 const NO_TRADE_ZONE_ASK_FLOOR = 0.05;
 const NO_TRADE_ZONE_ASK_CEIL = 0.95;
 const NO_TRADE_ZONE_MAX_PM_SPREAD_BPS = 800;
-const CONSENSUS_MIN_SCORE = 0.08;
+const GLOBAL_MIN_TIME_TO_RESOLUTION = 60;
+const GLOBAL_MIN_ABS_SPREAD_BPS = 8;
+const GLOBAL_MAX_PM_SPREAD_BPS = 600;
+const MIN_SIGNAL_PERSIST_MS = 2500;
+const QUALITY_MIN_SCORE = 0.10;
 
 function shouldEnter(
   config: StrategyConfig,
@@ -46,6 +52,17 @@ function shouldEnter(
   if (Math.abs(edge) < config.minEdge) return null;
   if (timeToResolution > config.maxTimeToResolution) return null;
   if (config.minTimeToResolution && timeToResolution < config.minTimeToResolution) return null;
+  if (timeToResolution < GLOBAL_MIN_TIME_TO_RESOLUTION) return null;
+
+  if (spreadBps === undefined || Math.abs(spreadBps) < GLOBAL_MIN_ABS_SPREAD_BPS) return null;
+  if (polymarketSpreadBps === undefined || polymarketSpreadBps > GLOBAL_MAX_PM_SPREAD_BPS) return null;
+  if (polymarketAskUp <= NO_TRADE_ZONE_ASK_FLOOR || polymarketAskUp >= NO_TRADE_ZONE_ASK_CEIL) return null;
+
+  const spreadSignal = Math.max(-1, Math.min(1, spreadBps / 100));
+  const binanceSignal = impliedUpBinance - 0.5;
+  const chainlinkSignal = impliedUpChainlink - 0.5;
+  const qualityScore = Math.abs((binanceSignal * 0.45) + (chainlinkSignal * 0.35) + (spreadSignal * 0.20));
+  if (qualityScore < QUALITY_MIN_SCORE) return null;
 
   if (mode === 'early-edge') {
     if (spreadBps === undefined) return null;
@@ -80,15 +97,6 @@ function shouldEnter(
       if (edge > 0 && spreadBps < 0) return null;
       if (edge < 0 && spreadBps > 0) return null;
     }
-  } else if (mode === 'consensus') {
-    if (spreadBps === undefined) return null;
-    const spreadSignal = Math.max(-1, Math.min(1, spreadBps / 100));
-    const binanceSignal = impliedUpBinance - 0.5;
-    const chainlinkSignal = impliedUpChainlink - 0.5;
-    const score = (binanceSignal * 0.5) + (chainlinkSignal * 0.3) + (spreadSignal * 0.2);
-    if (Math.abs(score) < CONSENSUS_MIN_SCORE) return null;
-    if (score > 0 && edge <= 0) return null;
-    if (score < 0 && edge >= 0) return null;
   } else if (config.requireSpreadConfirm) {
     if (spreadBps === undefined) return null;
     if (edge > 0 && spreadBps < 0) return null;
@@ -111,6 +119,12 @@ function shouldEnter(
     if (askDown <= 0 || askDown >= 1) return null;
     return { side: 'Down', price: askDown };
   }
+}
+
+function applyEntrySlippage(entryPrice: number, polymarketSpreadBps?: number): number {
+  const spreadComponent = ((polymarketSpreadBps ?? 0) / 10000) * 0.25;
+  const slippage = Math.min(0.02, 0.0015 + Math.max(0, spreadComponent));
+  return Math.min(0.999, entryPrice + slippage);
 }
 
 function resolvePosition(pos: PaperPosition, resolutionPrice: number, startPrice: number): PaperTrade {
@@ -172,10 +186,22 @@ function runStrategies() {
     );
 
     if (signal) {
+      const pendingKey = `${config.id}:${pm.slug}`;
+      const nowMs = Date.now();
+      const pending = pendingSignals[pendingKey];
+      if (!pending || pending.side !== signal.side) {
+        pendingSignals[pendingKey] = { side: signal.side, firstSeenMs: nowMs, lastSeenMs: nowMs };
+        continue;
+      }
+      pending.lastSeenMs = nowMs;
+      if ((nowMs - pending.firstSeenMs) < MIN_SIGNAL_PERSIST_MS) continue;
+      delete pendingSignals[pendingKey];
+
       if (signal.price <= 0 || signal.price >= 1) continue;
       const dollars = config.sizeInDollars ?? 5;
-      const size = Math.max(1, Math.floor(dollars / signal.price));
-      const cost = size * signal.price;
+      const filledPrice = applyEntrySlippage(signal.price, polymarketSpreadBps);
+      const size = Math.max(1, Math.floor(dollars / filledPrice));
+      const cost = size * filledPrice;
       if (balance < cost) continue;
 
       const startChainlink = ea.priceAtWindowStartChainlink ?? 0;
@@ -185,7 +211,7 @@ function runStrategies() {
         strategyId: config.id,
         windowSlug: pm.slug,
         side: signal.side,
-        entryPrice: signal.price,
+        entryPrice: filledPrice,
         size,
         entryTime: Date.now(),
         timeToResolutionAtEntry: timeToResolution,
@@ -194,7 +220,9 @@ function runStrategies() {
         priceAtWindowStartChainlink: startChainlink,
       };
       positions.push(pos);
-      console.log(`[Paper] ${config.name} ENTER ${signal.side} @ ${(signal.price * 100).toFixed(1)}% edge=${(edge * 100).toFixed(1)}% ttr=${timeToResolution}s`);
+      console.log(`[Paper] ${config.name} ENTER ${signal.side} @ ${(filledPrice * 100).toFixed(1)}% edge=${(edge * 100).toFixed(1)}% ttr=${timeToResolution}s`);
+    } else {
+      delete pendingSignals[`${config.id}:${pm.slug}`];
     }
   }
 }
@@ -207,6 +235,9 @@ function resolveWindow(prevSlug: string, resolutionPrice: number) {
     console.log(`[Paper] ${pos.strategyId} RESOLVE ${pos.side} ${trade.outcome} pnl=$${trade.pnl.toFixed(2)} bal=$${balance.toFixed(2)}`);
   }
   positions = positions.filter((p) => p.windowSlug !== prevSlug);
+  for (const key of Object.keys(pendingSignals)) {
+    if (key.endsWith(`:${prevSlug}`)) delete pendingSignals[key];
+  }
 }
 
 function initListeners() {
@@ -244,16 +275,35 @@ export function getPaperTradingState() {
 
   const lockedInPositions = activePositions.reduce((s, p) => s + p.entryPrice * p.size, 0);
 
-  const byStrategy = activeTrades.reduce<Record<string, { name: string; pnl: number; wins: number; losses: number }>>((acc, t) => {
+  const byStrategy = activeTrades.reduce<Record<string, {
+    name: string;
+    pnl: number;
+    wins: number;
+    losses: number;
+    avgWin: number;
+    avgLoss: number;
+    profitFactor: number;
+  }>>((acc, t) => {
     if (!acc[t.strategyId]) {
       const cfg = STRATEGIES.find((s) => s.id === t.strategyId);
-      acc[t.strategyId] = { name: cfg?.name ?? t.strategyId, pnl: 0, wins: 0, losses: 0 };
+      acc[t.strategyId] = { name: cfg?.name ?? t.strategyId, pnl: 0, wins: 0, losses: 0, avgWin: 0, avgLoss: 0, profitFactor: 0 };
     }
     acc[t.strategyId].pnl += t.pnl;
     if (t.outcome === 'win') acc[t.strategyId].wins++;
     else acc[t.strategyId].losses++;
     return acc;
   }, {});
+
+  for (const [strategyId, stats] of Object.entries(byStrategy)) {
+    const strategyTrades = activeTrades.filter((t) => t.strategyId === strategyId);
+    const winPnls = strategyTrades.filter((t) => t.pnl > 0).map((t) => t.pnl);
+    const lossPnls = strategyTrades.filter((t) => t.pnl < 0).map((t) => Math.abs(t.pnl));
+    const grossWin = winPnls.reduce((s, v) => s + v, 0);
+    const grossLoss = lossPnls.reduce((s, v) => s + v, 0);
+    stats.avgWin = winPnls.length > 0 ? grossWin / winPnls.length : 0;
+    stats.avgLoss = lossPnls.length > 0 ? grossLoss / lossPnls.length : 0;
+    stats.profitFactor = grossLoss > 0 ? grossWin / grossLoss : (grossWin > 0 ? Number.POSITIVE_INFINITY : 0);
+  }
 
   return {
     balance,
